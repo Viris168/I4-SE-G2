@@ -1,4 +1,4 @@
-package com.example.shop;
+package edu.itc.shop;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

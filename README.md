@@ -12,22 +12,22 @@ The parent manages them. Maven fills in the version from the parent's `dependenc
 
 ### What does `spring-boot-maven-plugin` do at package time?
 
-`package` first builds a thin jar of this project's classes. The plugin then repackages it into an executable jar. `java -jar` starts `JarLauncher`, which loads `BOOT-INF/lib` and `BOOT-INF/classes` and runs `com.example.shop.ShopApplication`.
+`package` first builds a thin jar of this project's classes. The plugin then repackages it into an executable jar. `java -jar` starts `JarLauncher`, which loads `BOOT-INF/lib` and `BOOT-INF/classes` and runs `edu.itc.shop.ShopApplication`.
 
 ### Dependency tree (first level)
 
 ```text
-com.example:shop:jar:0.0.1-SNAPSHOT
+edu.itc.se:shop:jar:0.0.1-SNAPSHOT
 +- org.springframework.boot:spring-boot-h2console:jar:4.1.1:compile
 +- org.springframework.boot:spring-boot-starter-actuator:jar:4.1.1:compile
-+- org.springframework.boot:spring-boot-starter-session-jdbc:jar:4.1.1:compile
++- org.springframework.boot:spring-boot-starter-jdbc:jar:4.1.1:compile
 +- org.springframework.boot:spring-boot-starter-validation:jar:4.1.1:compile
 +- org.springframework.boot:spring-boot-starter-webmvc:jar:4.1.1:compile
 +- org.springframework.boot:spring-boot-starter-aspectj:jar:4.1.1:compile
 +- org.springframework.boot:spring-boot-devtools:jar:4.1.1:runtime (optional)
 +- com.h2database:h2:jar:2.4.240:runtime
 +- org.springframework.boot:spring-boot-starter-actuator-test:jar:4.1.1:test
-+- org.springframework.boot:spring-boot-starter-session-jdbc-test:jar:4.1.1:test
++- org.springframework.boot:spring-boot-starter-jdbc-test:jar:4.1.1:test
 +- org.springframework.boot:spring-boot-starter-validation-test:jar:4.1.1:test
 \- org.springframework.boot:spring-boot-starter-webmvc-test:jar:4.1.1:test
 ```
@@ -46,7 +46,7 @@ The executable jar is large because Tomcat, Spring, H2, and the other starters a
 {"groups":["liveness","readiness"],"status":"UP"}
 ```
 
-With `--debug`, `DataSourceAutoConfiguration` matched because the JDBC classes are on the classpath (`spring-boot-starter-session-jdbc` and H2):
+With `--debug`, `DataSourceAutoConfiguration` matched because the JDBC classes are on the classpath (`spring-boot-starter-jdbc` and H2):
 
 ```text
 DataSourceAutoConfiguration matched:
