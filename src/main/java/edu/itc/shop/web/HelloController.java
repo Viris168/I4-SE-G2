@@ -1,4 +1,4 @@
-package com.example.shop.web;
+package edu.itc.shop.web;
 
 import java.time.Instant;
 
