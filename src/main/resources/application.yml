@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: shop
+  h2:
+    console:
+      enabled: false
+  mvc:
+    view:
+      prefix: /WEB-INF/jsp/
+      suffix: .jsp
+
+shop:
+  currency: USD
+  tax-rate: 0.10
+  low-stock-threshold: 5
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,loggers
+  endpoint:
+    health:
+      show-details: always
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: "@project.name@"
+    description: "@project.description@"
+    version: "@project.version@"
+    java: "@java.version@"
+    spring-boot: "@project.parent.version@"
+
+logging:
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %clr(%-5level) [%X{requestId:-main}] %clr(%-40.40logger{39}){cyan} : %m%n%wEx"
