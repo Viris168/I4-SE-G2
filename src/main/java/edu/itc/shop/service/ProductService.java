@@ -2,6 +2,8 @@ package edu.itc.shop.service;
 
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -12,6 +14,8 @@ import edu.itc.shop.web.dto.ProductDto;
 
 @Service
 public class ProductService {
+
+    private static final Logger log = LoggerFactory.getLogger(ProductService.class);
 
     private final ProductRepository repository;
 
@@ -35,7 +39,13 @@ public class ProductService {
     @Transactional
     public ProductDto create(CreateProduct cmd) {
         long id = repository.insert(new Product(null, cmd.name(), cmd.price(), cmd.stock()));
+        log.info("created product {} '{}'", id, cmd.name());
         return findById(id);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean nameExists(String name) {
+        return repository.existsByName(name);
     }
 
     @Transactional
