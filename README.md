@@ -56,6 +56,105 @@ DataSourceAutoConfiguration matched:
 
 Startup then connected Hikari to `jdbc:h2:mem:...`.
 
+## Inversion of control, dependency injection and bean lifecycle
+
+### Constructor Injection & AppConfig
+
+All beans use constructor injection with `final` fields. No field injection (`@Autowired` on fields) is used anywhere, which guarantees immutability, prevents partially initialized objects, and enables straightforward unit testing without Spring.
+
+`Clock` is provided via an `@Bean` method in `config/AppConfig`:
+
+```java
+@Configuration
+public class AppConfig {
+    @Bean
+    public Clock clock() {
+        return Clock.systemDefaultZone();
+    }
+}
+```
+
+`WelcomeService` injects two `Notifier` implementations and the `Clock` through its constructor:
+
+```java
+@Service
+public class WelcomeService {
+    private final Notifier defaultNotifier;
+    private final Notifier urgentNotifier;
+    private final Clock clock;
+
+    public WelcomeService(Notifier defaultNotifier, @Qualifier("smsNotifier") Notifier urgentNotifier, Clock clock) {
+        this.defaultNotifier = defaultNotifier;
+        this.urgentNotifier = urgentNotifier;
+        this.clock = clock;
+    }
+    ...
+}
+```
+
+### Disambiguation: `@Primary` vs `@Qualifier`
+
+When multiple beans implement the `Notifier` interface (`EmailNotifier`, `SmsNotifier`, `ConsoleNotifier`):
+- `Notifier defaultNotifier`: Because no qualifier is specified, Spring resolves by type and selects `EmailNotifier` because it is marked `@Primary`.
+- `@Qualifier("smsNotifier") Notifier urgentNotifier`: The qualifier explicitly directs Spring to inject the bean named `smsNotifier`.
+
+In `welcome(String user, boolean urgent)`, `WelcomeService` selects `urgentNotifier` when `urgent` is true, and `defaultNotifier` otherwise.
+
+### Lifecycle Callbacks & Prototype Scope
+
+- **Lifecycle Callbacks**: `EmailNotifier`, `SmsNotifier`, and `ConsoleNotifier` declare `@PostConstruct` (`init()`) and `@PreDestroy` (`destroy()`) methods. On application startup, `EmailNotifier ready` and `SmsNotifier ready` are logged. On context shutdown (e.g. on Ctrl+C or when stopping the context), `EmailNotifier closing` and `SmsNotifier closing` are logged.
+- **Prototype Scope**: `ReportBuilder` is annotated with `@Scope("prototype")`. In `ShopApplication`, an `ObjectProvider<ReportBuilder>` is injected. Calling `getObject()` twice produces two distinct object instances with different identity hash codes:
+
+```text
+INFO edu.itc.shop.ShopApplication : prototype instances differ: true
+```
+
+### Active Profile and the Rule for Multiple `@Primary` Beans
+
+A third implementation `ConsoleNotifier` is annotated with `@Profile("dev")` and `@Primary`.
+
+1. **Default profile (without `dev`)**:
+   Only `EmailNotifier` and `SmsNotifier` are registered in the ApplicationContext. `EmailNotifier` is marked `@Primary`, so it is injected into `WelcomeService`. Startup prints:
+
+   ```text
+   INFO edu.itc.shop.ShopApplication : 323 beans; notifiers = [emailNotifier, smsNotifier]
+   INFO edu.itc.shop.service.EmailNotifier : EMAIL to=ann text=Welcome ann! It is 14:01:06
+   INFO edu.itc.shop.service.SmsNotifier : SMS to=bob text=Welcome bob! It is 14:01:06
+   ```
+
+2. **What happens if both `@Primary` beans are active simultaneously?**
+   If `EmailNotifier` has `@Primary` (without profile filter) and `ConsoleNotifier` is active with `@Profile("dev")` and `@Primary`, Spring encounters **two** primary beans for the `Notifier` dependency.
+   
+   Spring fails at startup with:
+
+   ```text
+   org.springframework.beans.factory.NoUniqueBeanDefinitionException: No qualifying bean of type 'edu.itc.shop.service.Notifier' available: more than one 'primary' bean found among candidates: [consoleNotifier, emailNotifier, smsNotifier]
+       at org.springframework.beans.factory.support.DefaultListableBeanFactory.determinePrimaryCandidate(DefaultListableBeanFactory.java:2105)
+   ```
+
+   **The rule in Spring**:
+   Spring requires that at most **one** candidate bean of a given type may be marked `@Primary`. If multiple matching beans in the same ApplicationContext are marked `@Primary`, Spring does not guess, does not prioritize one profile over un-profiled beans, and does not use bean order. Instead, `determinePrimaryCandidate` throws a `NoUniqueBeanDefinitionException`.
+
+3. **Demonstrating profile switching**:
+   To cleanly switch implementations between profiles, `EmailNotifier` is marked `@Profile("!dev")` and `ConsoleNotifier` is marked `@Profile("dev")`. When running with `--spring.profiles.active=dev`, only `ConsoleNotifier` is active as `@Primary`, and `ConsoleNotifier` is used:
+
+   ```text
+   INFO edu.itc.shop.ShopApplication : 323 beans; notifiers = [consoleNotifier, smsNotifier]
+   INFO edu.itc.shop.service.ConsoleNotifier : CONSOLE to=ann text=Welcome ann! It is 14:00:05
+   INFO edu.itc.shop.service.SmsNotifier : SMS to=bob text=Welcome bob! It is 14:00:05
+   ```
+
+### Plain Unit Testing: `WelcomeServiceTest`
+
+`WelcomeServiceTest` tests `WelcomeService` without starting a Spring ApplicationContext (no `@SpringBootTest`, no `@ExtendWith(SpringExtension.class)`):
+- Dependencies (`Notifier` and `Clock`) are passed directly via the constructor.
+- A `FakeNotifier` test double records calls (`to` and `text`).
+- `Clock.fixed(Instant.parse("2026-09-25T09:15:02Z"), ZoneId.of("UTC"))` provides a predictable, fixed timestamp.
+- The test verifies:
+  - Non-urgent welcome calls the default notifier and formats the message correctly.
+  - Urgent welcome calls the urgent notifier.
+  - Tests run in milliseconds without Spring overhead.
+
 ## JDBC, JdbcClient and transactions
 
 ### Schema and data
