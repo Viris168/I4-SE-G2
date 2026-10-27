@@ -38,6 +38,20 @@ public class ProductRepository {
                 .list();
     }
 
+    public List<Product> findByStockLessThan(int threshold) {
+        return jdbc.sql("SELECT id, name, price, stock FROM product WHERE stock < :threshold ORDER BY id")
+                .param("threshold", threshold)
+                .query(Product.class)
+                .list();
+    }
+
+    public boolean existsByName(String name) {
+        return jdbc.sql("SELECT COUNT(*) FROM product WHERE name = :name")
+                .param("name", name)
+                .query(Long.class)
+                .single() > 0;
+    }
+
     public long insert(Product p) {
         var keys = new GeneratedKeyHolder();
         jdbc.sql("INSERT INTO product(name, price, stock) VALUES (:name, :price, :stock)")

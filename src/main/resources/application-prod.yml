@@ -1,0 +1,14 @@
+# All connection settings come from the environment; nothing secret is committed.
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD:}
+  h2:
+    console:
+      enabled: false
+
+logging:
+  level:
+    root: INFO
+    edu.itc.shop: INFO

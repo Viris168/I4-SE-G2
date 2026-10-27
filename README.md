@@ -161,11 +161,7 @@ A third implementation `ConsoleNotifier` is annotated with `@Profile("dev")` and
 
 `schema.sql` creates the `product` table (identity PK, `name VARCHAR(80) NOT NULL UNIQUE`, `price DECIMAL(10,2)`, `stock INT CHECK (stock >= 0)`). `data.sql` inserts five products. H2 runs in memory, so Spring Boot runs both scripts at startup without `spring.sql.init.mode`.
 
-`application.yaml` enables the H2 console at `/h2-console`. No fixed URL is set, so Boot gives each application context its own in-memory database (`jdbc:h2:mem:<uuid>`). Tests that start different contexts then do not share a database, and `schema.sql` does not run twice against the same one. Startup prints the URL to use in the console (user `sa`, empty password):
-
-```text
-H2 console available at '/h2-console'. Database available at 'jdbc:h2:mem:<uuid>'
-```
+The H2 console at `/h2-console` is enabled only in the `dev` profile (see Task 5). Outside `dev` no fixed URL is set, so Boot gives each application context its own in-memory database (`jdbc:h2:mem:<uuid>`). Tests that start different contexts then do not share a database, and `schema.sql` does not run twice against the same one. With `dev`, the URL is fixed to `jdbc:h2:mem:shop` (user `sa`, empty password).
 
 ### Raw JDBC vs JdbcClient
 
@@ -237,3 +233,122 @@ org.springframework.dao.DuplicateKeyException <- cause org.h2.jdbc.JdbcSQLIntegr
 - `@Repository` also wraps the bean in a proxy (`ProductRepository$$SpringCGLIB$$0`) with `PersistenceExceptionTranslationInterceptor`. That proxy translates any native persistence exception that is not yet a `DataAccessException` (for example from JPA or plain JDBC code). Here the exception is already a `DataAccessException`, so the proxy lets it through unchanged.
 
 Because of this, callers only see Spring's database-independent `DataAccessException` hierarchy and never H2-specific classes.
+
+## JSP views, profiles, Actuator, logging and an aspect
+
+### JSP pages
+
+The packaging is now `war`. `tomcat-embed-jasper` (scope `provided`) compiles the JSPs. `jakarta.servlet.jsp.jstl` supplies the JSTL tags. Views resolve to `/WEB-INF/jsp/<name>.jsp` (`spring.mvc.view.prefix`/`suffix`).
+
+`ProductPageController` (`@Controller`, `/products`):
+
+| Request | What happens |
+|---|---|
+| `GET /products?q=` | `products/list.jsp`: the search box and a table with net price, gross price (`price × (1 + taxRate)`) and stock. Rows below the low-stock threshold are highlighted. |
+| `GET /products/new` | `products/form.jsp`, an empty `CreateProduct` form |
+| `POST /products` | `@Valid @ModelAttribute` + `BindingResult`. On errors, the form is shown again with `<form:errors>` per field. On success, a **redirect** to `/products` with a flash message (POST-redirect-GET). |
+
+All user data is written with `<c:out>` or the Spring form tags, which escape HTML. A product named `USB-C <cable>` renders as `USB-C &lt;cable&gt;`. A duplicate name is reported as a form error on `name` (`ProductService.nameExists`), not as an error page. The page controller has no try/catch. `ApiExceptionHandler` is limited to `@RestController`s, so the JSON error format applies only to the API.
+
+> **Note:** run JSPs with `./mvnw spring-boot:run` or from the IDE. `java -jar target/shop-0.0.1-SNAPSHOT.war` cannot find the JSTL TLDs when the project path contains a space (here `Software Engineering`). Tomcat's jar scanner encodes the space twice (`%2520`) and cannot open the war. Copying the war to a path without spaces works.
+
+### Profiles and typed properties
+
+| | default (tests) | `dev` | `prod` |
+|---|---|---|---|
+| Datasource | random `jdbc:h2:mem:<uuid>` | `jdbc:h2:mem:shop` | `${DB_URL}`, `${DB_USERNAME}`, `${DB_PASSWORD}` from the environment |
+| H2 console | off | **on** at `/h2-console` | **off** |
+| Logging | INFO | DEBUG for `edu.itc.shop` and `org.springframework.jdbc.core` (SQL) | INFO |
+
+No password is committed. `prod` only reads environment variables, and without `DB_URL` the app does not start (`'url' must start with "jdbc"`).
+
+`config/ShopProperties` is a `@Validated @ConfigurationProperties("shop")` record, found by `@ConfigurationPropertiesScan`:
+
+```yaml
+shop:
+  currency: USD            # @NotBlank, 3 letters
+  tax-rate: 0.10           # @NotNull, 0.00 – 1.00
+  low-stock-threshold: 5   # @PositiveOrZero
+```
+
+An invalid value (for example `shop.tax-rate=1.5`) stops the application at startup. `ShopPropertiesValidationTest` proves this. `PricingService` uses the tax rate for the gross price.
+
+Startup, `dev`:
+
+```text
+$ ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+13:37:09.563 INFO  [main] edu.itc.shop.ShopApplication             : The following 1 profile is active: "dev"
+13:37:10.422 INFO  [main] o.s.b.h.a.H2ConsoleAutoConfiguration     : H2 console available at '/h2-console'. Database available at 'jdbc:h2:mem:shop'
+13:37:10.485 INFO  [main] edu.itc.shop.ShopApplication             : Started ShopApplication in 1.056 seconds
+```
+
+Startup, `prod` (H2 used as the "external" DB for the demo):
+
+```text
+$ DB_URL=jdbc:h2:mem:prod DB_USERNAME=sa java -jar shop.war --spring.profiles.active=prod
+13:37:36.533 INFO  [main] edu.itc.shop.ShopApplication             : The following 1 profile is active: "prod"
+13:37:38.199 INFO  [main] edu.itc.shop.ShopApplication             : Started ShopApplication in 1.864 seconds
+$ curl -o /dev/null -w '%{http_code}' localhost:8080/h2-console
+404
+```
+
+`prod` has no `H2 console available` line, and the console URL returns 404.
+
+### Actuator
+
+Exposed endpoints: `health,info,metrics,loggers`. Health shows details.
+
+`health/LowStockHealthIndicator` (component name `lowStock`) is DOWN when any product has fewer than `shop.low-stock-threshold` units. The seed data has `Keyboard` with 3 units, so health is DOWN (HTTP 503):
+
+```text
+$ curl localhost:8080/actuator/health
+{"components":{"db":{"status":"UP",...},"lowStock":{"details":{"threshold":5,"lowStockProducts":["Keyboard"]},"status":"DOWN"},"ping":{"status":"UP"},...},"status":"DOWN"}
+```
+
+`info.app.*` is filled from Maven properties (`@project.version@` etc., replaced by resource filtering). The `build-info` goal adds `build.*`:
+
+```text
+$ curl localhost:8080/actuator/info
+{"app":{"name":"shop","description":"Lab-02 shop application","version":"0.0.1-SNAPSHOT","java":"25.0.4.1","spring-boot":"4.1.1"},
+ "build":{"artifact":"shop","name":"shop","time":"2026-10-27T06:37:08.182Z","version":"0.0.1-SNAPSHOT","group":"edu.itc.se"}}
+```
+
+### Logging with a request id
+
+`web/RequestIdFilter` (a `OncePerRequestFilter` with the highest precedence) puts an 8-character random `requestId` into the MDC. It also returns the id as the `X-Request-Id` header. It removes the id in `finally`, because Tomcat reuses the thread for the next request. The console pattern prints `[%X{requestId}]`; lines outside a request show `[main]`.
+
+Each product creation is logged at INFO in `ProductService.create`. Each failed validation is logged at WARN, in `ApiExceptionHandler` (REST) and `ProductPageController` (form):
+
+```text
+13:37:25.773 INFO  [33e58778] edu.itc.shop.service.ProductService      : created product 7 'HDMI cable'
+13:37:25.773 DEBUG [33e58778] edu.itc.shop.service.TimingAspect        : ProductService.create(..) took 713 µs
+13:37:25.785 WARN  [609286ac] edu.itc.shop.web.ApiExceptionHandler     : Validation failed for uri=/api/products: [{message=must be greater than or equal to 0, field=stock}, {message=must not be blank, field=name}, {message=must be greater than or equal to 0.01, field=price}]
+```
+
+### Timing aspect and runtime log level
+
+`service/TimingAspect` is an `@Around` advice on `@within(org.springframework.stereotype.Service) && execution(public * *(..))`, so it covers every public method of every `@Service`. It logs `<method> took <µs>` at DEBUG, which is on in `dev`.
+
+The logger level can be changed while the app runs:
+
+```text
+$ curl localhost:8080/actuator/loggers/edu.itc.shop.service.TimingAspect
+{"effectiveLevel":"DEBUG"}
+
+$ curl -X POST localhost:8080/actuator/loggers/edu.itc.shop.service.TimingAspect \
+       -H 'Content-Type: application/json' -d '{"configuredLevel":"OFF"}'
+HTTP 204   → further requests log no "took … µs" lines (no restart)
+
+$ curl -X POST ... -d '{"configuredLevel":"DEBUG"}'
+13:37:25.849 DEBUG [ad51dcf1] edu.itc.shop.service.TimingAspect        : ProductService.search(..) took 343 µs
+```
+
+### Tests added
+
+- `ProductPageControllerTest` (`@WebMvcTest`): the list model includes the gross price, the invalid form returns 3 field errors, a duplicate name is rejected, a valid POST redirects with a flash message.
+- `LowStockHealthIndicatorTest`, `PricingServiceTest` (plain JUnit, no Spring).
+- `ShopPropertiesValidationTest`: invalid `shop.*` values stop the context.
+
+```text
+$ ./mvnw -q verify      → 26 tests, 0 failures
+```
