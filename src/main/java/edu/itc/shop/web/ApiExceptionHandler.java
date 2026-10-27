@@ -13,6 +13,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
@@ -20,7 +21,8 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 import edu.itc.shop.service.InsufficientStockException;
 import edu.itc.shop.service.ProductNotFoundException;
 
-@RestControllerAdvice
+/** Error bodies for the JSON API only; the JSP pages render their own errors. */
+@RestControllerAdvice(annotations = RestController.class)
 public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
@@ -34,6 +36,7 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
                 .map(e -> Map.of("field", e.getField(), "message", String.valueOf(e.getDefaultMessage())))
                 .toList();
         problem.setProperty("errors", errors);
+        log.warn("Validation failed for {}: {}", request.getDescription(false), errors);
         return handleExceptionInternal(ex, problem, headers, status, request);
     }
 
