@@ -1,9 +1,13 @@
-# All connection settings come from the environment; nothing secret is committed.
+# All connection settings come from the environment; defaults match docker-compose.yml
 spring:
   datasource:
-    url: ${DB_URL}
-    username: ${DB_USERNAME}
-    password: ${DB_PASSWORD:}
+    url: ${DB_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:shop}}
+    driver-class-name: org.postgresql.Driver
+    username: ${DB_USERNAME:${DB_USER:postgres}}
+    password: ${DB_PASSWORD:postgres}
+  sql:
+    init:
+      mode: always
   h2:
     console:
       enabled: false
