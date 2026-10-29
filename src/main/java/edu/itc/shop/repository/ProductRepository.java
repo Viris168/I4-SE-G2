@@ -67,6 +67,14 @@ public class ProductRepository {
                 .update();
     }
 
+    public boolean decrementStock(long productId, int qty) {
+        return updateStock(productId, -qty) > 0;
+    }
+
+    public void restoreStock(long productId, int qty) {
+        updateStock(productId, qty);
+    }
+
     public int delete(long id) {
         return jdbc.sql("DELETE FROM product WHERE id = :id")
                 .param("id", id)

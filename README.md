@@ -352,3 +352,127 @@ $ curl -X POST ... -d '{"configuredLevel":"DEBUG"}'
 ```text
 $ ./mvnw -q verify      → 26 tests, 0 failures
 ```
+
+# Challenge: Layered Order Management
+
+## 1. Package by Feature Structure
+
+```text
+edu.itc.shop/
+├── aspect/
+│   ├── Audited.java
+│   ├── AuditAspect.java
+│   └── RequestScopeContext.java
+├── customer/
+│   ├── Customer.java
+│   ├── CustomerRepository.java
+│   ├── CustomerService.java
+│   └── CustomerController.java
+├── notification/
+│   └── Notifier.java
+├── order/
+│   ├── Order.java
+│   ├── OrderLine.java
+│   ├── OrderStatus.java
+│   ├── OrderPricingCalculator.java
+│   ├── OrderRepository.java
+│   ├── OrderService.java
+│   ├── OrderController.java
+│   └── dto/
+```
+
+## 2. Component and Package Diagram
+
+```mermaid
+graph TD
+    subgraph Client Layer
+        Client["HTTP Client / Frontend"]
+    end
+
+    subgraph Order Feature
+        OC[OrderController]
+        OS[OrderService]
+        OR[(OrderRepository)]
+        OPC[OrderPricingCalculator]
+    end
+
+    subgraph Product Feature
+        PR[(ProductRepository)]
+    end
+
+    subgraph Customer Feature
+        CR[(CustomerRepository)]
+    end
+
+    subgraph Cross-Cutting & Infrastructure
+        Aspect["AuditAspect @Audited"]
+        RSC[RequestScopeContext]
+        Notifier[Notifier]
+        DB[("H2 / PostgreSQL")]
+    end
+
+    Client -->|POST /api/orders| OC
+    OC --> OS
+    OS -.-> Aspect
+    Aspect --> RSC
+    OS --> OPC
+    OS --> CR
+    OS --> PR
+    OS --> OR
+    OS --> Notifier
+    PR --> DB
+    OR --> DB
+    CR --> DB
+```
+
+## 3. Request Flow for "Place Order"
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    participant OrderController
+    participant AuditAspect
+    participant OrderService
+    participant ProductRepository
+    participant OrderPricingCalculator
+    participant OrderRepository
+    participant Database
+
+    Client->>OrderController: POST /api/orders (PlaceOrderRequest)
+    Note over OrderController: @Valid validation (not empty, qty >= 1)
+    OrderController->>AuditAspect: placeOrder(request)
+    AuditAspect->>AuditAspect: Log RequestId, Who, What, When
+    AuditAspect->>OrderService: proceed to placeOrder()
+    Note over OrderService: Start @Transactional boundary
+    OrderService->>Database: Verify customer exists
+    loop For each OrderLineRequest
+        OrderService->>ProductRepository: decrementStock(productId, qty)
+        ProductRepository->>Database: UPDATE product SET stock = stock - qty WHERE id = ? AND stock >= qty
+        alt Insufficient stock
+            Database-->>ProductRepository: 0 rows affected
+            ProductRepository-->>OrderService: false
+            OrderService-->>Client: 409 Conflict (Transaction Rollback)
+        else Sufficient stock
+            Database-->>ProductRepository: 1 row affected
+            ProductRepository-->>OrderService: true
+        end
+    end
+    OrderService->>OrderPricingCalculator: calculateOrderTotal(pricedLines, taxRate)
+    OrderPricingCalculator-->>OrderService: total
+    OrderService->>OrderRepository: createOrder(...) & createOrderLine(...)
+    OrderRepository->>Database: INSERT INTO orders & order_line
+    Note over OrderService: Commit transaction
+    OrderService-->>OrderController: OrderResponse
+    OrderController-->>Client: 201 Created (OrderResponse)
+```
+
+## 4. Transaction Boundary & Rationale
+
+The transaction boundary is established at the **service layer** on `OrderService.placeOrder()` and `OrderService.cancelOrder()` using Spring's `@Transactional` annotation.
+
+### Why at the Service Layer?
+1. **Atomicity Across Multiple Aggregates:** Placing an order spans multiple tables (`product`, `orders`, and `order_line`). Stock must be decremented for **all lines or none at all**. If decrementing the stock for the 3rd item fails due to insufficient inventory, the database updates for lines 1 and 2 must immediately roll back.
+2. **Snapshot Consistency:** Placing the boundary around the service method guarantees that stock reservation, price snapshotting, tax computation, and order insertion occur as an isolated, atomic unit of work (ACID properties).
+3. **Rollback on Business Conflict:** If an `OrderConflictException` is thrown (e.g. out of stock or duplicate items), the transaction manager automatically rolls back all previously executed SQL statements within that method, ensuring the database is left in a clean, consistent state.
+

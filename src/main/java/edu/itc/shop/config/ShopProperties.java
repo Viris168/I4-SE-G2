@@ -18,4 +18,8 @@ public record ShopProperties(
         @NotBlank @Size(min = 3, max = 3) String currency,
         @NotNull @DecimalMin("0.00") @DecimalMax("1.00") BigDecimal taxRate,
         @PositiveOrZero int lowStockThreshold) {
+
+    public BigDecimal getTaxRate() {
+        return taxRate();
+    }
 }

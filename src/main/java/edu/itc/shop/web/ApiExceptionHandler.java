@@ -55,6 +55,11 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "A product with this name already exists");
     }
 
+    @ExceptionHandler(edu.itc.shop.order.OrderConflictException.class)
+    public ProblemDetail orderConflict(edu.itc.shop.order.OrderConflictException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
     @ExceptionHandler(Exception.class)
     public ProblemDetail unexpected(Exception ex) {
         log.error("Unexpected error", ex);
