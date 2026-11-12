@@ -2,6 +2,7 @@ package edu.itc.shop.domain;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import jakarta.persistence.CascadeType;
@@ -98,7 +99,7 @@ public class Order {
     }
 
     public List<OrderLine> getLines() {
-        return lines;
+        return Collections.unmodifiableList(lines);
     }
 
     public long getVersion() {

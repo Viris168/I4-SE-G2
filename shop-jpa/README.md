@@ -22,7 +22,60 @@ Caused by: org.hibernate.MappingException: The increment size of the [product_se
 	at org.hibernate.id.enhanced.SequenceStyleGenerator.configure(SequenceStyleGenerator.java:208) ~[hibernate-core-7.4.5.Final.jar:7.4.5.Final]
 ```
 
-## 2. Repositories, queries, projections and a paginated endpoint
+## 2. Associations, cascading and entity identity
+
+`OrderLine.order` is the owning side (`order_id` column). `Order.lines` is the inverse side with `mappedBy = "order"`, `cascade = ALL` and `orphanRemoval = true`. `addLine` / `removeLine` keep both sides in sync, and `getLines()` returns a read-only view.
+
+### Persisting an order: 1 + N inserts, no update (`OrderCascadeTest`)
+
+Only `em.persist(order)` is called; the two lines follow through cascade. `order_id` is already set by `addLine`, so no fix-up `UPDATE` is needed.
+
+```text
+DEBUG org.hibernate.SQL : insert into orders (customer_id,placed_at,status,version,id) values (?,?,?,?,?)
+DEBUG org.hibernate.SQL : insert into order_line (order_id,product_id,quantity,amount,currency,id) values (?,?,?,?,?,?)
+DEBUG org.hibernate.SQL : insert into order_line (order_id,product_id,quantity,amount,currency,id) values (?,?,?,?,?,?)
+```
+
+### Removing a line: orphan removal
+
+`order.removeLine(order.getLines().get(0))` followed by `flush()`:
+
+```text
+DEBUG org.hibernate.SQL : delete from order_line where id=?
+```
+
+### Removing the order: cascade REMOVE
+
+The remaining line is deleted before the order, so the foreign key is never violated:
+
+```text
+DEBUG org.hibernate.SQL : delete from order_line where id=?
+DEBUG org.hibernate.SQL : delete from orders where id=? and version=?
+```
+
+### Entity identity (`EntityIdentityTest`)
+
+`equals` compares the class and a non-null `id`; `hashCode` returns a constant per class. A new `Product` added to a `HashSet` before `persist` is still found after `flush` assigns its id, and a copy reloaded in a fresh persistence context is `equals` to the original but not `==`.
+
+### The `toString` pitfall
+
+`Order.toString()` was temporarily changed to print `lines`, and `OrderLine.toString()` to print `order`.
+
+Printing an order loaded outside a transaction (detached, `lines` still a lazy proxy):
+
+```text
+org.hibernate.LazyInitializationException: Cannot lazily initialize collection of role 'edu.itc.shop.domain.Order.lines' with key '1' (no session)
+```
+
+Printing the same order inside a transaction (lines load, then each line prints its order, which prints its lines, ...):
+
+```text
+java.lang.StackOverflowError
+```
+
+Reverted: `toString` on every entity uses scalar fields only (`id`, `status`, `quantity`, ...), never associations.
+
+## 3. Repositories, queries, projections and a paginated endpoint
 
 ### Boot-time derived query typo
 
