@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import edu.itc.shop.domain.Order;
+import edu.itc.shop.domain.OrderLine;
 import edu.itc.shop.domain.OrderStatus;
 import edu.itc.shop.repository.OrderRepository;
 import edu.itc.shop.web.dto.LineDto;
@@ -43,6 +44,14 @@ public class OrderService {
         return toDto(load(id));
     }
 
+    // Task 5: open-in-view=false fix, lines are mapped while the session is still open
+    @Transactional(readOnly = true)
+    public List<LineDto> findLines(Long orderId) {
+        return orders.findById(orderId).orElseThrow().getLines().stream()
+                .map(OrderService::toDto)
+                .toList();
+    }
+
     private Order load(Long id) {
         return orders.findById(id).orElseThrow(() -> new EntityNotFoundException("Order " + id + " not found"));
     }
@@ -52,13 +61,15 @@ public class OrderService {
                 order.getId(),
                 order.getStatus(),
                 order.getPlacedAt(),
-                order.getLines().stream()
-                        .map(line -> new LineDto(
-                                line.getProduct().getSku(),
-                                line.getProduct().getName(),
-                                line.getQuantity(),
-                                line.getUnitPrice()))
-                        .toList(),
+                order.getLines().stream().map(OrderService::toDto).toList(),
                 order.total());
+    }
+
+    private static LineDto toDto(OrderLine line) {
+        return new LineDto(
+                line.getProduct().getSku(),
+                line.getProduct().getName(),
+                line.getQuantity(),
+                line.getUnitPrice());
     }
 }
