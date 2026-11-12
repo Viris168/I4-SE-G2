@@ -3,6 +3,7 @@ package edu.itc.shop.support;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Component;
@@ -13,6 +14,7 @@ import edu.itc.shop.domain.Category;
 import edu.itc.shop.domain.Customer;
 import edu.itc.shop.domain.Money;
 import edu.itc.shop.domain.Order;
+import edu.itc.shop.domain.OrderLine;
 import edu.itc.shop.domain.OrderStatus;
 import edu.itc.shop.domain.Product;
 
@@ -67,5 +69,43 @@ public class TestData {
         }
         em.flush();
         return orders.stream().map(Order::getId).toList();
+    }
+
+    /** Creates an isolated customer, product and NEW order for Task 4 tests. */
+    @Transactional
+    public Long newOrder() {
+        String token = uniqueToken();
+        Address address = new Address("12 Lock St", "Phnom Penh", "12000");
+        Customer customer = new Customer("Lock Tester " + token, "lock-" + token + "@test.local", address, address);
+        em.persist(customer);
+
+        Product product = new Product("LK-" + token, "Lock Product " + token, Money.eur("25.00"), Category.HARDWARE, 10);
+        em.persist(product);
+
+        Order order = new Order(customer);
+        order.addLine(product, 2);
+        em.persist(order);
+        em.flush();
+        return order.getId();
+    }
+
+    /** Deletes an order created by {@link #newOrder()} along with its product and customer. */
+    @Transactional
+    public void deleteOrder(Long orderId) {
+        Order order = em.find(Order.class, orderId);
+        if (order == null) {
+            return;
+        }
+        Customer customer = order.getCustomer();
+        List<Product> lineProducts = order.getLines().stream().map(OrderLine::getProduct).toList();
+        em.remove(order);
+        em.flush();
+        lineProducts.forEach(em::remove);
+        em.remove(customer);
+        em.flush();
+    }
+
+    private static String uniqueToken() {
+        return UUID.randomUUID().toString().replace("-", "").substring(0, 12);
     }
 }
