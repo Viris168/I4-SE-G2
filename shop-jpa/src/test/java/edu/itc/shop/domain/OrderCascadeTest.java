@@ -14,10 +14,6 @@ import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabas
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase.Replace;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 
-/**
- * Order is the aggregate root of its lines: persisting, orphan removal and cascade REMOVE
- * all go through Order, and the SQL that Hibernate runs is counted with {@link Statistics}.
- */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = Replace.NONE)
 class OrderCascadeTest {
@@ -47,17 +43,17 @@ class OrderCascadeTest {
         order.addLine(mouse, 2);
 
         stats.clear();
-        em.persist(order);   // only the order is persisted explicitly; cascade ALL takes the lines along
+        em.persist(order);
         em.flush();
 
         assertThat(stats.getEntityStatistics(Order.class.getName()).getInsertCount()).isEqualTo(1);
         assertThat(stats.getEntityStatistics(OrderLine.class.getName()).getInsertCount()).isEqualTo(2);
-        assertThat(stats.getEntityUpdateCount()).isZero();   // order_id is set before insert, no fix-up UPDATE
+        assertThat(stats.getEntityUpdateCount()).isZero();
 
         em.clear();
         Order reloaded = em.find(Order.class, order.getId());
         assertThat(reloaded.getLines()).hasSize(2);
-        assertThat(reloaded.total().amount()).isEqualByComparingTo(new BigDecimal("89.00")); // 49 + 2 × 20
+        assertThat(reloaded.total().amount()).isEqualByComparingTo(new BigDecimal("89.00"));
     }
 
     @Test

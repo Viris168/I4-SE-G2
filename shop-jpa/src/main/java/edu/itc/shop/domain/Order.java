@@ -98,7 +98,6 @@ public class Order {
         this.placedAt = placedAt;
     }
 
-    /** Read-only view: lines are changed only through {@link #addLine} and {@link #removeLine}. */
     public List<OrderLine> getLines() {
         return Collections.unmodifiableList(lines);
     }

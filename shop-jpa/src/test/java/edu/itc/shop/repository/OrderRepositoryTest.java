@@ -92,7 +92,6 @@ class OrderRepositoryTest {
         List<Order> fetched = orders.findWithLinesByCustomerEmail("ada@example.com");
 
         assertThat(fetched).hasSize(1);
-        // getLines() is a read-only wrapper, so ask the persistence unit about the attribute itself
         assertThat(em.getEntityManagerFactory().getPersistenceUnitUtil().isLoaded(fetched.get(0), "lines")).isTrue();
         assertThat(fetched.get(0).getLines()).hasSize(2);
         Long id = fetched.get(0).getId();
