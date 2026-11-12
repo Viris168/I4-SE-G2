@@ -39,7 +39,7 @@ class BatchInsertTest {
 
         System.out.printf("BatchInsertTest: inserts=%d, prepared statements=%d%n", counter.inserts(), counter.count());
         assertThat(counter.inserts()).isEqualTo(1000);
-        // 20 sequence calls (allocationSize 50) + 20 insert batches (batch_size 50)
+        // 20 insert batches (batch_size 50) + 2 sequence calls (allocationSize 500 since the Challenge, was 20)
         assertThat(counter.count()).isLessThan(100);
     }
 

@@ -11,6 +11,10 @@ import jakarta.persistence.Id;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 
+import org.hibernate.annotations.BatchSize;
+
+// Challenge: the order feed touches the customers of 20 orders; load those proxies in one query
+@BatchSize(size = 20)
 @Entity
 @Table(name = "customer")
 public class Customer {
