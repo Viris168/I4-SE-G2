@@ -5,6 +5,7 @@ import java.util.Optional;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -39,4 +40,15 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     @Query("select count(l) from OrderLine l where l.order.status = :status")
     long countLinesByStatus(@Param("status") OrderStatus status);
+
+    // Task 5: entity list for the naive N+1 report
+    List<Order> findByStatus(OrderStatus status);
+
+    // Task 5 (Fix A)
+    @Query("select distinct o from Order o join fetch o.lines where o.status = :s")
+    List<Order> findByStatusWithLines(@Param("s") OrderStatus status);
+
+    // Task 5 (Fix B)
+    @EntityGraph(attributePaths = {"lines", "lines.product"})
+    List<Order> findWithGraphByStatus(OrderStatus status);
 }

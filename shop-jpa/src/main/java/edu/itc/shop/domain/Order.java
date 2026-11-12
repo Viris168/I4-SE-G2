@@ -21,6 +21,8 @@ import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 
+import org.hibernate.annotations.BatchSize;
+
 @Entity
 @Table(name = "orders")
 public class Order {
@@ -43,6 +45,14 @@ public class Order {
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderLine> lines = new ArrayList<>();
+
+    // Task 5 (Fix C): same rows as `lines`, loaded 16 orders at a time.
+    // @BatchSize on a collection overrides every session/global setting, so putting it on `lines`
+    // itself would also batch the naive report and make the N+1 demo impossible to reproduce.
+    // Read-only: always change lines through `lines` / addLine().
+    @OneToMany(mappedBy = "order")
+    @BatchSize(size = 16)
+    private List<OrderLine> batchedLines = new ArrayList<>();
 
     @Version
     private long version;
@@ -100,6 +110,11 @@ public class Order {
 
     public List<OrderLine> getLines() {
         return Collections.unmodifiableList(lines);
+    }
+
+    // Task 5
+    public List<OrderLine> getBatchedLines() {
+        return Collections.unmodifiableList(batchedLines);
     }
 
     public long getVersion() {

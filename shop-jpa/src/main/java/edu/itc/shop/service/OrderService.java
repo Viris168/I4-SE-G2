@@ -35,4 +35,16 @@ public class OrderService {
                         order.total()))
                 .toList();
     }
+
+    // Task 5: open-in-view=false fix, lines are mapped while the session is still open
+    @Transactional(readOnly = true)
+    public List<LineDto> findLines(Long orderId) {
+        return orders.findById(orderId).orElseThrow().getLines().stream()
+                .map(line -> new LineDto(
+                        line.getProduct().getSku(),
+                        line.getProduct().getName(),
+                        line.getQuantity(),
+                        line.getUnitPrice()))
+                .toList();
+    }
 }
