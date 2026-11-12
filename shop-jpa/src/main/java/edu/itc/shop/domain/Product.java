@@ -53,11 +53,15 @@ public class Product {
     }
 
     public Product(String sku, String name, Money price, Category category) {
+        this(sku, name, price, category, 0);
+    }
+
+    public Product(String sku, String name, Money price, Category category, int stock) {
         this.sku = sku;
         this.name = name;
         this.price = price;
         this.category = category;
-        this.stock = 0;
+        this.stock = stock;
     }
 
     public void tag(Tag tag) {

@@ -21,7 +21,7 @@ CREATE TABLE product (
     sku       VARCHAR(20)    NOT NULL UNIQUE,
     name      VARCHAR(120)   NOT NULL,
     amount    DECIMAL(12, 2) NOT NULL,
-    currency  VARCHAR(3)     NOT NULL,
+    currency  CHAR(3)        NOT NULL,
     category  VARCHAR(20)    NOT NULL,
     stock     INT            NOT NULL DEFAULT 0 CHECK (stock >= 0)
 );
@@ -54,7 +54,7 @@ CREATE TABLE order_line (
     product_id  BIGINT         NOT NULL,
     quantity    INT            NOT NULL CHECK (quantity > 0),
     amount      DECIMAL(12, 2) NOT NULL,
-    currency    VARCHAR(3)     NOT NULL,
+    currency    CHAR(3)        NOT NULL,
     CONSTRAINT fk_order_line_order FOREIGN KEY (order_id) REFERENCES orders (id),
     CONSTRAINT fk_order_line_product FOREIGN KEY (product_id) REFERENCES product (id)
 );
