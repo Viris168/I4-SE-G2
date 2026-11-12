@@ -2,9 +2,23 @@ package edu.itc.shop.domain;
 
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import jakarta.persistence.*;
+
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.SequenceGenerator;
+import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 
 @Entity
 @Table(name = "orders")
@@ -21,25 +35,42 @@ public class Order {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private OrderStatus status;
+    private OrderStatus status = OrderStatus.NEW;
 
     @Column(name = "placed_at", nullable = false)
-    private Instant placedAt;
-
-    @Version
-    @Column(nullable = false)
-    private long version;
+    private Instant placedAt = Instant.now();
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderLine> lines = new ArrayList<>();
 
+    @Version
+    private long version;
+
     protected Order() {
     }
 
-    public Order(Customer customer, OrderStatus status, Instant placedAt) {
+    public Order(Customer customer) {
         this.customer = customer;
-        this.status = status;
-        this.placedAt = placedAt;
+    }
+
+    public OrderLine addLine(Product product, int quantity) {
+        OrderLine line = new OrderLine(this, product, quantity, product.getPrice());
+        lines.add(line);
+        return line;
+    }
+
+    public void removeLine(OrderLine line) {
+        if (lines.remove(line)) {
+            line.setOrder(null);
+        }
+    }
+
+    public Money total() {
+        Money sum = Money.eur("0");
+        for (OrderLine line : lines) {
+            sum = sum.plus(line.getUnitPrice().times(line.getQuantity()));
+        }
+        return sum;
     }
 
     public Long getId() {
@@ -62,15 +93,30 @@ public class Order {
         return placedAt;
     }
 
+    public void setPlacedAt(Instant placedAt) {
+        this.placedAt = placedAt;
+    }
+
+    public List<OrderLine> getLines() {
+        return lines;
+    }
+
     public long getVersion() {
         return version;
     }
 
-    public List<OrderLine> getLines() {
-        return Collections.unmodifiableList(lines);
+    @Override
+    public boolean equals(Object o) {
+        return this == o || (o instanceof Order other && id != null && id.equals(other.getId()));
     }
 
-    public void addLine(OrderLine line) {
-        lines.add(line);
+    @Override
+    public int hashCode() {
+        return Order.class.hashCode();
+    }
+
+    @Override
+    public String toString() {
+        return "Order[id=%s, status=%s]".formatted(id, status);
     }
 }

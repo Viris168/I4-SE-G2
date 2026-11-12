@@ -1,6 +1,16 @@
 package edu.itc.shop.domain;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.SequenceGenerator;
+import jakarta.persistence.Table;
 
 @Entity
 @Table(name = "order_line")
@@ -28,11 +38,15 @@ public class OrderLine {
     protected OrderLine() {
     }
 
-    public OrderLine(Order order, Product product, int quantity, Money unitPrice) {
+    OrderLine(Order order, Product product, int quantity, Money unitPrice) {
         this.order = order;
         this.product = product;
         this.quantity = quantity;
         this.unitPrice = unitPrice;
+    }
+
+    void setOrder(Order order) {
+        this.order = order;
     }
 
     public Long getId() {
@@ -51,15 +65,22 @@ public class OrderLine {
         return quantity;
     }
 
-    public void setQuantity(int quantity) {
-        this.quantity = quantity;
-    }
-
     public Money getUnitPrice() {
         return unitPrice;
     }
 
-    public void setUnitPrice(Money unitPrice) {
-        this.unitPrice = unitPrice;
+    @Override
+    public boolean equals(Object o) {
+        return this == o || (o instanceof OrderLine other && id != null && id.equals(other.getId()));
+    }
+
+    @Override
+    public int hashCode() {
+        return OrderLine.class.hashCode();
+    }
+
+    @Override
+    public String toString() {
+        return "OrderLine[id=%s, quantity=%d]".formatted(id, quantity);
     }
 }

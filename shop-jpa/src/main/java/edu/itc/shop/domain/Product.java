@@ -1,9 +1,22 @@
 package edu.itc.shop.domain;
 
-import java.util.Collections;
+import java.math.BigDecimal;
 import java.util.HashSet;
 import java.util.Set;
-import jakarta.persistence.*;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
+import jakarta.persistence.SequenceGenerator;
+import jakarta.persistence.Table;
 
 @Entity
 @Table(name = "product")
@@ -31,11 +44,9 @@ public class Product {
     private int stock;
 
     @ManyToMany
-    @JoinTable(
-            name = "product_tag",
+    @JoinTable(name = "product_tag",
             joinColumns = @JoinColumn(name = "product_id"),
-            inverseJoinColumns = @JoinColumn(name = "tag_id")
-    )
+            inverseJoinColumns = @JoinColumn(name = "tag_id"))
     private Set<Tag> tags = new HashSet<>();
 
     protected Product() {
@@ -51,6 +62,11 @@ public class Product {
         this.price = price;
         this.category = category;
         this.stock = stock;
+    }
+
+    public void tag(Tag tag) {
+        tags.add(tag);
+        tag.getProducts().add(this);
     }
 
     public Long getId() {
@@ -77,6 +93,10 @@ public class Product {
         this.price = price;
     }
 
+    public BigDecimal getAmount() {
+        return price == null ? null : price.amount();
+    }
+
     public Category getCategory() {
         return category;
     }
@@ -90,14 +110,21 @@ public class Product {
     }
 
     public Set<Tag> getTags() {
-        return Collections.unmodifiableSet(tags);
+        return tags;
     }
 
-    public void addTag(Tag tag) {
-        tags.add(tag);
+    @Override
+    public boolean equals(Object o) {
+        return this == o || (o instanceof Product other && id != null && id.equals(other.getId()));
     }
 
-    public void removeTag(Tag tag) {
-        tags.remove(tag);
+    @Override
+    public int hashCode() {
+        return Product.class.hashCode();
+    }
+
+    @Override
+    public String toString() {
+        return "Product[id=%s, sku=%s]".formatted(id, sku);
     }
 }
