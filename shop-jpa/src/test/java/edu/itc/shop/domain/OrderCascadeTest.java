@@ -84,7 +84,7 @@ class OrderCascadeTest {
         em.flush();
 
         assertThat(em.find(Order.class, orderId)).isNull();
-        assertThat(countLines()).isZero();
+        assertThat(countLinesOf(orderId)).isZero();
     }
 
     private Long persistOrderWithTwoLines() {
@@ -95,6 +95,14 @@ class OrderCascadeTest {
         em.flush();
         em.clear();
         return order.getId();
+    }
+
+    // Task 5: count only this order's lines, the H2 database is shared with the @SpringBootTest tests
+    private long countLinesOf(Long orderId) {
+        return em.getEntityManager()
+                .createQuery("select count(l) from OrderLine l where l.order.id = :id", Long.class)
+                .setParameter("id", orderId)
+                .getSingleResult();
     }
 
     private long countLines() {
