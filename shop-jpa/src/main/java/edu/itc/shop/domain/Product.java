@@ -17,6 +17,7 @@ import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 
 @Entity
 @Table(name = "product")
@@ -24,7 +25,8 @@ public class Product {
 
     @Id
     @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "product_seq")
-    @SequenceGenerator(name = "product_seq", sequenceName = "product_seq", allocationSize = 50)
+    // Challenge: 500 (was 50) so the bulk import gets full 500-row batches, see V3__challenge.sql
+    @SequenceGenerator(name = "product_seq", sequenceName = "product_seq", allocationSize = 500)
     private Long id;
 
     @Column(nullable = false, unique = true, length = 20)
@@ -42,6 +44,10 @@ public class Product {
 
     @Column(nullable = false)
     private int stock;
+
+    // Challenge: optimistic stock reservation (V3 adds the column)
+    @Version
+    private long version;
 
     @ManyToMany
     @JoinTable(name = "product_tag",
@@ -107,6 +113,11 @@ public class Product {
 
     public void setStock(int stock) {
         this.stock = stock;
+    }
+
+    // Challenge
+    public long getVersion() {
+        return version;
     }
 
     public Set<Tag> getTags() {

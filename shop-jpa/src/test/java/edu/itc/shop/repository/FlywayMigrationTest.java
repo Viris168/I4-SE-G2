@@ -23,7 +23,7 @@ class FlywayMigrationTest {
         System.out.println("flyway_schema_history: " + all);
         // Flyway 11+ also writes a "<< Flyway Schema History table created >>" row (rank -1, no version)
         List<Map<String, Object>> history = all.stream().filter(row -> row.get("version") != null).toList();
-        assertThat(history).extracting(row -> row.get("version")).containsExactly("1", "2");
+        assertThat(history).extracting(row -> row.get("version")).containsExactly("1", "2", "3");   // Challenge: + V3
         assertThat(history.get(1).get("description")).isEqualTo("indexes");
 
         List<String> indexes = jdbc.queryForList(
