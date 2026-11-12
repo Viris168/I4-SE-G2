@@ -6,7 +6,6 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
-import org.hibernate.Hibernate;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -93,13 +92,14 @@ class OrderRepositoryTest {
         List<Order> fetched = orders.findWithLinesByCustomerEmail("ada@example.com");
 
         assertThat(fetched).hasSize(1);
-        assertThat(Hibernate.isInitialized(fetched.get(0).getLines())).isTrue();
+        // getLines() is a read-only wrapper, so ask the persistence unit about the attribute itself
+        assertThat(em.getEntityManagerFactory().getPersistenceUnitUtil().isLoaded(fetched.get(0), "lines")).isTrue();
         assertThat(fetched.get(0).getLines()).hasSize(2);
         Long id = fetched.get(0).getId();
 
         em.clear();
         Order plain = orders.findById(id).orElseThrow();
-        assertThat(Hibernate.isInitialized(plain.getLines())).isFalse();
+        assertThat(em.getEntityManagerFactory().getPersistenceUnitUtil().isLoaded(plain, "lines")).isFalse();
     }
 
     @Test

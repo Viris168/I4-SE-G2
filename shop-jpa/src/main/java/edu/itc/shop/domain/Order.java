@@ -2,6 +2,7 @@ package edu.itc.shop.domain;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import jakarta.persistence.CascadeType;
@@ -97,8 +98,9 @@ public class Order {
         this.placedAt = placedAt;
     }
 
+    /** Read-only view: lines are changed only through {@link #addLine} and {@link #removeLine}. */
     public List<OrderLine> getLines() {
-        return lines;
+        return Collections.unmodifiableList(lines);
     }
 
     public long getVersion() {
