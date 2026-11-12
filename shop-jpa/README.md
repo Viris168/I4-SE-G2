@@ -124,9 +124,9 @@ DEBUG org.hibernate.SQL : select count(o1_0.id) from orders o1_0 where o1_0.stat
 
 The three HTTP transcripts, including the read-only transaction for `GET /api/customers/{email}/orders`, are in `api-session.md`.
 
-## 4. Entity states, dirty checking and flush order
+## 4. Entity states, dirty checking, transactions and optimistic locking
 
-Tests: `OrderServiceTest` (managed, detached, read-only) and `FlushOrderTest` (flush order). Optimistic locking is the other half of Task 4.
+Tests: `OrderServiceTest` (managed, detached, read-only), `FlushOrderTest` (flush order), and `OptimisticLockingTest` (optimistic locking and retry).
 
 ### Managed change: no `save()` needed
 
@@ -168,6 +168,25 @@ DEBUG org.hibernate.SQL : insert into tag (name,id) values (?,?)
 ```
 
 Both variants are kept as tests: `insertRunsBeforeDeleteSoReusingTheUniqueNameFails` and `flushingTheDeleteFirstFixesIt`.
+
+### Optimistic locking and retry (`OptimisticLockingTest`)
+
+`Order.version` (`@Version`, `BIGINT NOT NULL DEFAULT 0` in `V1__init.sql`) makes Hibernate include `and version=?` in every `UPDATE`. When two threads load the same `Order` at `version = 0` (`CountDownLatch(2)` in `secondWriterFailsWithOptimisticLock`), the first commit increments `version` to `1`, and the second finds `0` matching rows and rolls back with `ObjectOptimisticLockingFailureException`.
+
+`OrderFacade.changeStatusWithRetry` lives in a separate `@Service` bean outside `OrderService`, because Spring's `@Transactional` proxy commits and throws `ObjectOptimisticLockingFailureException` when `OrderService.changeStatus` returns. Retrying up to 3 times lets both concurrent writers succeed and ends at `version = versionBefore + 2`.
+
+Excerpt from `OptimisticLockingTest` (`org.springframework.orm.jpa=DEBUG`, `org.springframework.transaction.interceptor=TRACE` in `application-test.yml`):
+
+```text
+TRACE o.s.t.i.TransactionInterceptor : Getting transaction for [edu.itc.shop.service.OrderService.changeStatus]
+DEBUG org.hibernate.SQL              : select o1_0.id,o1_0.customer_id,o1_0.placed_at,o1_0.status,o1_0.version from orders o1_0 where o1_0.id=?
+DEBUG org.hibernate.SQL              : update orders set customer_id=?,placed_at=?,status=?,version=? where id=? and version=?
+DEBUG o.s.orm.jpa.JpaTransactionManager : Initiating transaction rollback after commit exception
+org.springframework.orm.ObjectOptimisticLockingFailureException: Batch update returned unexpected row count from update 0 (expected row count 1 but was 0) [update orders set customer_id=?,placed_at=?,status=?,version=? where id=? and version=?] for entity [edu.itc.shop.domain.Order with id '2']
+DEBUG o.s.orm.jpa.JpaTransactionManager : Rolling back JPA transaction on EntityManager [SessionImpl(1169592289<open>)]
+TRACE o.s.t.i.TransactionInterceptor : Getting transaction for [edu.itc.shop.service.OrderService.changeStatus]
+DEBUG org.hibernate.SQL              : update orders set customer_id=?,placed_at=?,status=?,version=? where id=? and version=?
+```
 
 ## 5. N+1, performance tuning and a second migration
 

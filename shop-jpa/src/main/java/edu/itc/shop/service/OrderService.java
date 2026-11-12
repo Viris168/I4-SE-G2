@@ -44,6 +44,11 @@ public class OrderService {
         return toDto(load(id));
     }
 
+    @Transactional
+    public void changeStatus(Long id, OrderStatus next) {
+        load(id).setStatus(next);
+    }
+
     // Task 5: open-in-view=false fix, lines are mapped while the session is still open
     @Transactional(readOnly = true)
     public List<LineDto> findLines(Long orderId) {
