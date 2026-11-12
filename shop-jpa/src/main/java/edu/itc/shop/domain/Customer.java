@@ -1,6 +1,15 @@
 package edu.itc.shop.domain;
 
-import jakarta.persistence.*;
+import jakarta.persistence.AttributeOverride;
+import jakarta.persistence.AttributeOverrides;
+import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.SequenceGenerator;
+import jakarta.persistence.Table;
 
 @Entity
 @Table(name = "customer")
@@ -14,16 +23,21 @@ public class Customer {
     @Column(nullable = false, length = 120)
     private String name;
 
-    @Column(nullable = false, unique = true, length = 255)
+    @Column(nullable = false, unique = true, length = 180)
     private String email;
 
     @Embedded
+    @AttributeOverrides({
+            @AttributeOverride(name = "street", column = @Column(name = "street", nullable = false, length = 120)),
+            @AttributeOverride(name = "city", column = @Column(name = "city", nullable = false, length = 80)),
+            @AttributeOverride(name = "zip", column = @Column(name = "zip", nullable = false, length = 20))
+    })
     private Address billing;
 
     @Embedded
     @AttributeOverrides({
-            @AttributeOverride(name = "street", column = @Column(name = "ship_street", nullable = false, length = 200)),
-            @AttributeOverride(name = "city", column = @Column(name = "ship_city", nullable = false, length = 100)),
+            @AttributeOverride(name = "street", column = @Column(name = "ship_street", nullable = false, length = 120)),
+            @AttributeOverride(name = "city", column = @Column(name = "ship_city", nullable = false, length = 80)),
             @AttributeOverride(name = "zip", column = @Column(name = "ship_zip", nullable = false, length = 20))
     })
     private Address shipping;
@@ -46,31 +60,30 @@ public class Customer {
         return name;
     }
 
-    public void setName(String name) {
-        this.name = name;
-    }
-
     public String getEmail() {
         return email;
-    }
-
-    public void setEmail(String email) {
-        this.email = email;
     }
 
     public Address getBilling() {
         return billing;
     }
 
-    public void setBilling(Address billing) {
-        this.billing = billing;
-    }
-
     public Address getShipping() {
         return shipping;
     }
 
-    public void setShipping(Address shipping) {
-        this.shipping = shipping;
+    @Override
+    public boolean equals(Object o) {
+        return this == o || (o instanceof Customer other && id != null && id.equals(other.getId()));
+    }
+
+    @Override
+    public int hashCode() {
+        return Customer.class.hashCode();
+    }
+
+    @Override
+    public String toString() {
+        return "Customer[id=%s, email=%s]".formatted(id, email);
     }
 }
