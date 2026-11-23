@@ -1,6 +1,12 @@
 package edu.itc.shop.domain;
 
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Predicate;
+import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.NotFoundException;
 
 /**
@@ -12,8 +18,33 @@ public class ProductService {
 
     public ProductService(ProductRepository repo) { this.repo = repo; }
 
+    /** Sortable fields; anything else is rejected, never forwarded. */
+    public static final Set<String> SORT_FIELDS = Set.of("name", "price", "stock");
+    private static final Map<String, Comparator<Product>> SORTS = Map.of(
+            "name", Comparator.comparing(Product::name, String.CASE_INSENSITIVE_ORDER),
+            "price", Comparator.comparing(Product::price),
+            "stock", Comparator.comparingInt(Product::stock));
+
     public List<Product> list() {
         return repo.findAll();
+    }
+
+    /** Filters by name text, price bounds and stock, then sorts by a whitelisted field. */
+    public List<Product> search(ProductQuery query) {
+        Comparator<Product> order = SORTS.get(query.sortField());
+        if (order == null) throw new BadRequestException("Cannot sort by '" + query.sortField() + "'");
+        if (query.descending()) order = order.reversed();
+
+        Predicate<Product> keep = p -> true;
+        if (query.text() != null && !query.text().isBlank()) {
+            String needle = query.text().toLowerCase(Locale.ROOT);
+            keep = keep.and(p -> p.name().toLowerCase(Locale.ROOT).contains(needle));
+        }
+        if (query.minPrice() != null) keep = keep.and(p -> p.price().compareTo(query.minPrice()) >= 0);
+        if (query.maxPrice() != null) keep = keep.and(p -> p.price().compareTo(query.maxPrice()) <= 0);
+        if (query.inStockOnly()) keep = keep.and(p -> p.stock() > 0);
+
+        return repo.findAll().stream().filter(keep).sorted(order.thenComparingLong(Product::id)).toList();
     }
 
     public Product get(long id) {
