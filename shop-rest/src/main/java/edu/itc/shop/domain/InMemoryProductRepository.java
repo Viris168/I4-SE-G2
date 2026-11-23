@@ -33,8 +33,9 @@ public class InMemoryProductRepository implements ProductRepository {
 
     @Override
     public Optional<Product> findBySku(String sku) {
+        if (sku == null) return Optional.empty();
         return products.values().stream()
-                .filter(p -> p.sku().equals(sku))
+                .filter(p -> sku.equals(p.sku()))
                 .findFirst();
     }
 
