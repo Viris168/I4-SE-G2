@@ -10,6 +10,8 @@ Requires JDK 25 and Maven 3.9.
 mvn -q compile exec:java        # http://localhost:8080/api/ , stop with Ctrl+C
 ```
 
+Without a local Maven install, use the wrapper: `./mvnw -q compile exec:java` (and `./mvnw test`).
+
 ## Layout
 
 | Package | Content |
@@ -65,6 +67,21 @@ Transcript: `docs/task2-http.md`. To regenerate it, start the server on a fresh 
 - The resource methods contain no try/catch and no validation code; the 404/409 of Tasks 1–2 became problem bodies without touching `ProductResource`.
 
 Transcript: `docs/task3-http.md` (regenerate with `docs/record-task3.sh`; the 500 experiment is described in the file).
+
+## Task 4 · Providers and filters
+
+All four providers live in `edu.itc.shop.api.filter` and are picked up by the package scan; `ProductResource` was not changed except for `@Compress` on the list method.
+
+| Provider | Kind | What it does |
+|---|---|---|
+| `ApiKeyFilter` | `@PreMatching` request filter, `Priorities.AUTHENTICATION` | Every method except `GET`/`HEAD`/`OPTIONS` needs `X-Api-Key` from the system property `shop.api.keys` (default `demo-123`); otherwise 401 problem+json with `WWW-Authenticate: ApiKey realm="shop"`, before any matching. |
+| `CorsFilter` | `@PreMatching` request + response filter | Answers every `OPTIONS` preflight with 200 before it reaches a resource and adds the `Access-Control-*` headers to all responses. |
+| `CorrelationFilter` | request + response filter, `Priorities.USER` | Echoes `X-Correlation-Id` or generates a UUID, and logs one line per request: `METHOD path -> status [id] ms`. |
+| `GzipWriterInterceptor` + `@Compress` | name-bound `WriterInterceptor` | Gzips only `@Compress` methods (the product list), and only when `Accept-Encoding` contains `gzip`; sets `Content-Encoding: gzip` and `Vary: Accept-Encoding`. |
+
+`ApiKeyFilter` runs before `CorrelationFilter` (pre-matching before post-matching, then by priority). When it aborts, the response filters still run, so a 401 also carries the correlation id and CORS headers.
+
+Transcript: `docs/task4-http.md` (regenerate with `docs/record-task4.sh`). `FiltersTest` (12 tests) checks the same behaviour with JUnit.
 
 ## Task 5 · Pagination, caching and versioning
 
