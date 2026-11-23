@@ -17,6 +17,12 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Request;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+import edu.itc.shop.api.dto.Problem;
 import edu.itc.shop.api.dto.ProductDto;
 import edu.itc.shop.api.dto.ProductV2;
 import edu.itc.shop.api.dto.StockChange;
@@ -30,6 +36,7 @@ import edu.itc.shop.domain.ReviewRepository;
 @Path("/products")
 @Produces({MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML})
 @Consumes({MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML})
+@Tag(name = "Products", description = "Product catalogue")
 public class ProductResource {
     private static final String V1_JSON = "application/vnd.shop.v1+json";
 
@@ -42,6 +49,9 @@ public class ProductResource {
         this.reviews = reviews;
     }
 
+    @Operation(summary = "List products", description = "Filtered, sorted and paged; Link (first/prev/next/last) and X-Total-Count headers")
+    @APIResponse(responseCode = "200", description = "One page of products")
+    @APIResponse(responseCode = "400", description = "Invalid filter, sort, page or size", content = @Content(mediaType = Problem.MEDIA_TYPE))
     @GET
     @Compress
     public Response list(@BeanParam @Valid ProductFilter filter, @Context UriInfo uriInfo) {
@@ -73,7 +83,12 @@ public class ProductResource {
     @GET
     @Path("{id: \\d+}")
     @Produces({"application/json; qs=1.0", V1_JSON + "; qs=0.9", MediaType.APPLICATION_XML + "; qs=0.9"})
-    public Response one(@PathParam("id") long id, @Context Request request) {
+    @Operation(summary = "Get a product (v1, JSON or XML)", description = "Cacheable: ETag + Cache-Control")
+    @APIResponse(responseCode = "200", description = "The product")
+    @APIResponse(responseCode = "304", description = "Not modified (If-None-Match matched)")
+    @APIResponse(responseCode = "404", description = "Unknown product", content = @Content(mediaType = Problem.MEDIA_TYPE))
+    @APIResponse(responseCode = "406", description = "Unsupported Accept", content = @Content(mediaType = Problem.MEDIA_TYPE))
+    public Response one(@Parameter(description = "Product id") @PathParam("id") long id, @Context Request request) {
         Product product = service.get(id);
         return cachedProduct(product, ProductDto.from(product), request);
     }
@@ -81,12 +96,22 @@ public class ProductResource {
     @GET
     @Path("{id: \\d+}")
     @Produces(ProductV2.MEDIA_TYPE + "; qs=0.9")
-    public Response oneV2(@PathParam("id") long id, @Context Request request) {
+    @Operation(summary = "Get a product (v2: Money price, available flag)")
+    @APIResponse(responseCode = "200", description = "The product, application/vnd.shop.v2+json")
+    @APIResponse(responseCode = "304", description = "Not modified")
+    @APIResponse(responseCode = "404", description = "Unknown product", content = @Content(mediaType = Problem.MEDIA_TYPE))
+    public Response oneV2(@Parameter(description = "Product id") @PathParam("id") long id, @Context Request request) {
         Product product = service.get(id);
         return cachedProduct(product, ProductV2.from(product), request);
     }
 
     @POST
+    @Operation(summary = "Create a product")
+    @APIResponse(responseCode = "201", description = "Created, Location header")
+    @APIResponse(responseCode = "400", description = "Validation failed", content = @Content(mediaType = Problem.MEDIA_TYPE))
+    @APIResponse(responseCode = "401", description = "Missing or invalid X-Api-Key", content = @Content(mediaType = Problem.MEDIA_TYPE))
+    @APIResponse(responseCode = "409", description = "Duplicate SKU", content = @Content(mediaType = Problem.MEDIA_TYPE))
+    @APIResponse(responseCode = "415", description = "Unsupported Content-Type", content = @Content(mediaType = Problem.MEDIA_TYPE))
     public Response create(@Valid @NotNull ProductDto dto, @Context UriInfo uriInfo) {
         Product saved = service.create(dto.toProduct(0, 0));
         URI location = uriInfo.getAbsolutePathBuilder().path(Long.toString(saved.id())).build();
@@ -95,8 +120,17 @@ public class ProductResource {
 
     @PUT
     @Path("{id: \\d+}")
-    public Response replace(@PathParam("id") long id,
-                            @HeaderParam(HttpHeaders.IF_MATCH) String ifMatch,
+    @Operation(summary = "Replace a product", description = "Requires If-Match with the current ETag")
+    @APIResponse(responseCode = "200", description = "Replaced, new ETag")
+    @APIResponse(responseCode = "400", description = "Validation failed", content = @Content(mediaType = Problem.MEDIA_TYPE))
+    @APIResponse(responseCode = "401", description = "Missing or invalid X-Api-Key", content = @Content(mediaType = Problem.MEDIA_TYPE))
+    @APIResponse(responseCode = "404", description = "Unknown product", content = @Content(mediaType = Problem.MEDIA_TYPE))
+    @APIResponse(responseCode = "409", description = "SKU taken by another product", content = @Content(mediaType = Problem.MEDIA_TYPE))
+    @APIResponse(responseCode = "412", description = "If-Match does not match the current version", content = @Content(mediaType = Problem.MEDIA_TYPE))
+    @APIResponse(responseCode = "415", description = "Unsupported Content-Type", content = @Content(mediaType = Problem.MEDIA_TYPE))
+    @APIResponse(responseCode = "428", description = "If-Match missing", content = @Content(mediaType = Problem.MEDIA_TYPE))
+    public Response replace(@Parameter(description = "Product id") @PathParam("id") long id,
+                            @Parameter(description = "Current ETag, e.g. \"1\"") @HeaderParam(HttpHeaders.IF_MATCH) String ifMatch,
                             @Valid @NotNull ProductDto dto,
                             @Context Request request) {
         if (ifMatch == null || ifMatch.isBlank()) {
@@ -115,19 +149,30 @@ public class ProductResource {
     @PATCH
     @Path("{id: \\d+}/stock")
     @Consumes(MediaType.APPLICATION_JSON)
-    public ProductDto changeStock(@PathParam("id") long id, @Valid @NotNull StockChange change) {
+    @Operation(summary = "Change the stock by a delta")
+    @APIResponse(responseCode = "200", description = "Updated product")
+    @APIResponse(responseCode = "400", description = "Validation failed", content = @Content(mediaType = Problem.MEDIA_TYPE))
+    @APIResponse(responseCode = "401", description = "Missing or invalid X-Api-Key", content = @Content(mediaType = Problem.MEDIA_TYPE))
+    @APIResponse(responseCode = "404", description = "Unknown product", content = @Content(mediaType = Problem.MEDIA_TYPE))
+    @APIResponse(responseCode = "409", description = "Stock would go negative", content = @Content(mediaType = Problem.MEDIA_TYPE))
+    @APIResponse(responseCode = "415", description = "Unsupported Content-Type", content = @Content(mediaType = Problem.MEDIA_TYPE))
+    public ProductDto changeStock(@Parameter(description = "Product id") @PathParam("id") long id, @Valid @NotNull StockChange change) {
         return ProductDto.from(service.adjustStock(id, change.delta()));
     }
 
     @DELETE
     @Path("{id: \\d+}")
-    public Response delete(@PathParam("id") long id) {
+    @Operation(summary = "Delete a product")
+    @APIResponse(responseCode = "204", description = "Deleted")
+    @APIResponse(responseCode = "401", description = "Missing or invalid X-Api-Key", content = @Content(mediaType = Problem.MEDIA_TYPE))
+    @APIResponse(responseCode = "404", description = "Unknown product", content = @Content(mediaType = Problem.MEDIA_TYPE))
+    public Response delete(@Parameter(description = "Product id") @PathParam("id") long id) {
         service.delete(id);
         return Response.noContent().build();
     }
 
     @Path("{id: \\d+}/reviews")
-    public ReviewResource reviews(@PathParam("id") long id) {
+    public ReviewResource reviews(@Parameter(description = "Product id") @PathParam("id") long id) {
         return new ReviewResource(service.get(id), reviews);
     }
 

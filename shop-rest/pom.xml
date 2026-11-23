@@ -61,6 +61,13 @@
     </dependency>
 
     <dependency>
+      <groupId>org.eclipse.microprofile.openapi</groupId>
+      <artifactId>microprofile-openapi-api</artifactId>
+      <version>4.1</version>
+      <scope>provided</scope>                                 <!-- annotations only, read at build time -->
+    </dependency>
+
+    <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
       <scope>test</scope>
@@ -78,6 +85,29 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.5.3</version>
+      </plugin>
+      <plugin>
+        <!-- Scans the compiled JAX-RS + OpenAPI annotations and writes META-INF/openapi.yaml -->
+        <groupId>io.smallrye</groupId>
+        <artifactId>smallrye-open-api-maven-plugin</artifactId>
+        <version>4.4.1</version>
+        <executions>
+          <execution>
+            <phase>process-classes</phase>
+            <goals><goal>generate-schema</goal></goals>
+          </execution>
+        </executions>
+        <configuration>
+          <outputDirectory>${project.build.outputDirectory}/META-INF</outputDirectory>
+          <schemaFilename>openapi</schemaFilename>
+          <scanDependenciesDisable>true</scanDependenciesDisable>
+          <infoTitle>shop-rest API</infoTitle>
+          <infoVersion>1.0.0</infoVersion>
+          <infoDescription>Lab-04 product catalogue and orders (Jakarta REST 4.0 on Jersey)</infoDescription>
+          <servers>
+            <server>/api</server>
+          </servers>
+        </configuration>
       </plugin>
       <plugin>
         <groupId>org.codehaus.mojo</groupId>

@@ -1,6 +1,8 @@
 package edu.itc.shop.domain;
 
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -10,6 +12,7 @@ import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.ClientErrorException;
 import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.core.Response;
+import edu.itc.shop.domain.order.OrderLine;
 
 /**
  * Business rules (unique SKU, no negative stock) live here, not in the resource.
@@ -89,5 +92,29 @@ public class ProductService {
 
     public synchronized void delete(long id) {
         if (!repo.delete(id)) throw new NotFoundException("Product " + id + " not found");
+    }
+
+    /**
+     * Takes the quantities of all lines out of stock, or none of them: every product is checked first
+     * (404 when unknown, 409 when short), then all are saved. Returns the products in line order.
+     */
+    public synchronized List<Product> reserve(List<OrderLine> lines) {
+        var wanted = new HashMap<Long, Integer>();
+        for (OrderLine line : lines) wanted.merge(line.productId(), line.quantity(), Integer::sum);
+        for (var e : wanted.entrySet()) {
+            Product p = get(e.getKey());
+            if (p.stock() < e.getValue()) throw new InsufficientStockException(p.id(), p.stock(), -e.getValue());
+        }
+        wanted.forEach((id, qty) -> { Product p = get(id); repo.save(p.withStock(p.stock() - qty)); });
+        var inLineOrder = new ArrayList<Product>();
+        for (OrderLine line : lines) inLineOrder.add(get(line.productId()));
+        return inLineOrder;
+    }
+
+    /** Puts the quantities back, e.g. when an order is cancelled. Products deleted meanwhile are skipped. */
+    public synchronized void release(List<OrderLine> lines) {
+        for (OrderLine line : lines) {
+            repo.findById(line.productId()).ifPresent(p -> repo.save(p.withStock(p.stock() + line.quantity())));
+        }
     }
 }

@@ -10,15 +10,20 @@ import edu.itc.shop.domain.InMemoryReviewRepository;
 import edu.itc.shop.domain.ProductRepository;
 import edu.itc.shop.domain.ProductService;
 import edu.itc.shop.domain.ReviewRepository;
+import edu.itc.shop.domain.order.InMemoryOrderRepository;
+import edu.itc.shop.domain.order.OrderService;
+import edu.itc.shop.api.idempotency.IdempotencyStore;
 
 public class Main {
     public static final URI BASE = URI.create("http://localhost:8080/api/");
 
-    /** The application: scanned resources/providers + one shared repository and service. */
+    /** The application: scanned resources/providers + shared singletons. Every call builds fresh state. */
     public static ResourceConfig config() {
         ProductRepository repo = new InMemoryProductRepository();
         ProductService service = new ProductService(repo);
         ReviewRepository reviews = new InMemoryReviewRepository();
+        OrderService orders = new OrderService(service, new InMemoryOrderRepository());
+        IdempotencyStore idempotency = new IdempotencyStore();
         return new ResourceConfig()
                 .packages("edu.itc.shop.api")
                 .register(new AbstractBinder() {
@@ -27,6 +32,8 @@ public class Main {
                         bind(repo).to(ProductRepository.class);
                         bind(service).to(ProductService.class);
                         bind(reviews).to(ReviewRepository.class);
+                        bind(orders).to(OrderService.class);
+                        bind(idempotency).to(IdempotencyStore.class);
                     }
                 });
     }
