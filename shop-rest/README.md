@@ -15,9 +15,9 @@ mvn -q compile exec:java        # http://localhost:8080/api/ , stop with Ctrl+C
 | Package | Content |
 |---|---|
 | `edu.itc.shop` | `Main`: Grizzly bootstrap and `config()` (`ResourceConfig` + `AbstractBinder`) |
-| `edu.itc.shop.domain` | `Product`, `ProductRepository`, `InMemoryProductRepository`, `ProductService`, domain exceptions. No HTTP code apart from the status carried by the exceptions. |
-| `edu.itc.shop.api` | `ProductResource` |
-| `edu.itc.shop.api.dto` | `ProductDto` (JSON + XML), `StockChange`, `Problem` (RFC 9457) |
+| `edu.itc.shop.domain` | `Product`, `ProductRepository`, `InMemoryProductRepository`, `ProductService`, `Review`, `ReviewRepository`, `InMemoryReviewRepository`, `Money`, `ProductQuery`, domain exceptions. No HTTP code apart from the status carried by the exceptions. |
+| `edu.itc.shop.api` | `ProductResource`, `ReviewResource` (sub-resource) |
+| `edu.itc.shop.api.dto` | `ProductDto` (JSON + XML), `ProductV2` (`vnd.shop.v2+json`), `CreateReview`, `StockChange`, `Problem` (RFC 9457) |
 | `edu.itc.shop.api.params` | `ProductFilter` (`@BeanParam`), `MoneyConverterProvider` |
 | `edu.itc.shop.api.error` | `ValidationMapper`, `ProblemMapper` |
 | `edu.itc.shop.api.filter` | Task 4 filters and the gzip interceptor |
@@ -65,4 +65,14 @@ Transcript: `docs/task2-http.md`. To regenerate it, start the server on a fresh 
 - The resource methods contain no try/catch and no validation code; the 404/409 of Tasks 1–2 became problem bodies without touching `ProductResource`.
 
 Transcript: `docs/task3-http.md` (regenerate with `docs/record-task3.sh`; the 500 experiment is described in the file).
+
+## Task 5 · Pagination, caching and versioning
+
+- **Pagination.** `ProductFilter` adds validated `page` (`>= 0`, default `0`) and `size` (`1..100`, default `20`). `InMemoryProductRepository` seeds 30 additional products (33 total). `GET /api/products` returns `X-Total-Count` (after filtering) and `Link` headers (`first`, `prev`, `next`, `last`) built with `UriInfo.getRequestUriBuilder().replaceQueryParam("page", n)`, omitting `prev` on the first page and `next` on the last page.
+- **Caching & optimistic concurrency.** `GET /api/products/{id}` derives an `EntityTag` from `product.version()`, returns `304 Not Modified` when `If-None-Match` matches via `Request.evaluatePreconditions(tag)`, and attaches `ETag` and `Cache-Control: private, no-transform, max-age=60`. `PUT /api/products/{id}` requires `If-Match` (`428 Precondition Required` as `problem+json` when missing), returns `412 Precondition Failed` (`problem+json`) when stale, and returns `200` with the new `ETag` on success. `PATCH /api/products/{id}/stock` continues to work without preconditions.
+- **Media-type versioning.** `GET /api/products/{id}` serves `ProductV2` (`Money` object + `available` flag) for `Accept: application/vnd.shop.v2+json`, while plain `Accept: */*` / `application/json` (`qs=1.0`) and `application/vnd.shop.v1+json` stay on v1 (`ProductDto`).
+- **Sub-resource.** `@Path("{id: \\d+}/reviews")` on `ProductResource` is a sub-resource locator returning `new ReviewResource(product, reviews)` backed by a bound thread-safe `ReviewRepository` singleton. `ReviewResource` serves `GET` (list and by id) and validated `POST` (`stars` 1–5, non-blank `author`, `text` ≤ 500 chars → `201` + `Location`). Requests for unknown products fail with `404` in the locator.
+
+Transcript: [docs/task5-http.md](docs/task5-http.md) (regenerate with `docs/record-task5.sh`). Run `mvn -q test` to execute both `FiltersTest` and `Task5Test`.
+
 

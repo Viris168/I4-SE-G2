@@ -6,8 +6,10 @@ import org.glassfish.jersey.grizzly2.httpserver.GrizzlyHttpServerFactory;
 import org.glassfish.jersey.inject.hk2.AbstractBinder;   // Jersey 4 moved it here (was internal.inject in 3.x)
 import org.glassfish.jersey.server.ResourceConfig;
 import edu.itc.shop.domain.InMemoryProductRepository;
+import edu.itc.shop.domain.InMemoryReviewRepository;
 import edu.itc.shop.domain.ProductRepository;
 import edu.itc.shop.domain.ProductService;
+import edu.itc.shop.domain.ReviewRepository;
 
 public class Main {
     public static final URI BASE = URI.create("http://localhost:8080/api/");
@@ -16,6 +18,7 @@ public class Main {
     public static ResourceConfig config() {
         ProductRepository repo = new InMemoryProductRepository();
         ProductService service = new ProductService(repo);
+        ReviewRepository reviews = new InMemoryReviewRepository();
         return new ResourceConfig()
                 .packages("edu.itc.shop.api")
                 .register(new AbstractBinder() {
@@ -23,6 +26,7 @@ public class Main {
                     protected void configure() {
                         bind(repo).to(ProductRepository.class);
                         bind(service).to(ProductService.class);
+                        bind(reviews).to(ReviewRepository.class);
                     }
                 });
     }

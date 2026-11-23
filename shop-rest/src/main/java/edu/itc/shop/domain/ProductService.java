@@ -7,7 +7,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
 import jakarta.ws.rs.BadRequestException;
+import jakarta.ws.rs.ClientErrorException;
 import jakarta.ws.rs.NotFoundException;
+import jakarta.ws.rs.core.Response;
 
 /**
  * Business rules (unique SKU, no negative stock) live here, not in the resource.
@@ -58,6 +60,19 @@ public class ProductService {
 
     public synchronized Product replace(long id, Product changes) {
         Product current = get(id);
+        return saveReplacement(id, current, changes);
+    }
+
+    public synchronized Product replace(long id, Product changes, int expectedVersion) {
+        Product current = get(id);
+        if (current.version() != expectedVersion) {
+            throw new ClientErrorException("ETag does not match current version",
+                    Response.Status.PRECONDITION_FAILED);
+        }
+        return saveReplacement(id, current, changes);
+    }
+
+    private Product saveReplacement(long id, Product current, Product changes) {
         repo.findBySku(changes.sku())
             .filter(other -> other.id() != id)
             .ifPresent(other -> { throw new DuplicateSkuException(changes.sku()); });

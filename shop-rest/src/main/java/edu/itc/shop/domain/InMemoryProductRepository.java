@@ -17,6 +17,12 @@ public class InMemoryProductRepository implements ProductRepository {
         save(new Product(0, "Kettle", "KT-01", new BigDecimal("24.90"), 12, 0));
         save(new Product(0, "Mug", "MG-01", new BigDecimal("6.50"), 40, 0));
         save(new Product(0, "Tea", "TE-01", new BigDecimal("4.20"), 0, 0));
+        for (int i = 1; i <= 30; i++) {
+            String num = String.format("%02d", i);
+            BigDecimal price = BigDecimal.valueOf(500L + i * 75L, 2);
+            int stock = (i % 5) * 3;
+            save(new Product(0, "Item " + num, "IT-" + num, price, stock, 0));
+        }
     }
 
     @Override
