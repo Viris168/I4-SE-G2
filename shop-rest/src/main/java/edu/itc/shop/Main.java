@@ -3,7 +3,7 @@ package edu.itc.shop;
 import java.net.URI;
 import org.glassfish.grizzly.http.server.HttpServer;
 import org.glassfish.jersey.grizzly2.httpserver.GrizzlyHttpServerFactory;
-import org.glassfish.jersey.internal.inject.AbstractBinder;
+import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 import edu.itc.shop.domain.InMemoryProductRepository;
 import edu.itc.shop.domain.ProductRepository;
