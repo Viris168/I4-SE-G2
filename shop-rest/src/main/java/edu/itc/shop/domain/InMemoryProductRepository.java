@@ -8,7 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 
-/** Shared by every request thread, so only thread-safe state is used. */
+/** Thread-safe: one instance is shared by all request threads. */
 public class InMemoryProductRepository implements ProductRepository {
     private final ConcurrentMap<Long, Product> products = new ConcurrentHashMap<>();
     private final AtomicLong ids = new AtomicLong();
@@ -21,7 +21,9 @@ public class InMemoryProductRepository implements ProductRepository {
 
     @Override
     public List<Product> findAll() {
-        return products.values().stream().sorted(Comparator.comparingLong(Product::id)).toList();
+        return products.values().stream()
+                .sorted(Comparator.comparingLong(Product::id))
+                .toList();
     }
 
     @Override
@@ -32,15 +34,19 @@ public class InMemoryProductRepository implements ProductRepository {
     @Override
     public Optional<Product> findBySku(String sku) {
         if (sku == null) return Optional.empty();
-        return products.values().stream().filter(p -> sku.equals(p.sku())).findFirst();
+        return products.values().stream()
+                .filter(p -> sku.equals(p.sku()))
+                .findFirst();
     }
 
     @Override
-    public Product save(Product p) {
-        long id = p.id() == 0 ? ids.incrementAndGet() : p.id();
-        Product saved = new Product(id, p.name(), p.sku(), p.price(), p.stock(), p.version() + 1);
-        products.put(id, saved);
-        return saved;
+    public Product save(Product product) {
+        long id = product.id() == 0 ? ids.incrementAndGet() : product.id();
+        // compute() is atomic per key, so concurrent saves of one id cannot lose a version bump
+        return products.compute(id, (key, current) -> {
+            int version = current == null ? product.version() : current.version();
+            return product.withId(key).withVersion(version + 1);
+        });
     }
 
     @Override
