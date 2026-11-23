@@ -32,7 +32,7 @@ public class ProblemMapper implements ExceptionMapper<Throwable> {
             Response original = wae.getResponse();
             int status = original.getStatus();
             var problem = new Problem("about:blank", reasonPhrase(original), status, wae.getMessage(), path, null);
-            return Response.fromResponse(original).type(Problem.MEDIA_TYPE).entity(problem).build();
+            return Response.fromResponse(original).status(original.getStatusInfo()).type(Problem.MEDIA_TYPE).entity(problem).build();
         }
         if (isUnreadableBody(ex)) {
             var problem = new Problem("about:blank", "Bad Request", 400,

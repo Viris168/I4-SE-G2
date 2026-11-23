@@ -7,7 +7,8 @@ Lab-04: a product catalogue API with Jakarta REST 4.0 on Eclipse Jersey and an e
 Requires JDK 25 and Maven 3.9.
 
 ```bash
-mvn -q compile exec:java        # http://localhost:8080/api/ , stop with Ctrl+C
+mvn -q process-classes exec:java   # http://localhost:8080/api/ , stop with Ctrl+C
+mvn -q verify                      # builds, generates OpenAPI, runs every test (JerseyTest + Grizzly)
 ```
 
 Without a local Maven install, use the wrapper: `./mvnw -q compile exec:java` (and `./mvnw test`).
@@ -18,8 +19,10 @@ Without a local Maven install, use the wrapper: `./mvnw -q compile exec:java` (a
 |---|---|
 | `edu.itc.shop` | `Main`: Grizzly bootstrap and `config()` (`ResourceConfig` + `AbstractBinder`) |
 | `edu.itc.shop.domain` | `Product`, `ProductRepository`, `InMemoryProductRepository`, `ProductService`, `Review`, `ReviewRepository`, `InMemoryReviewRepository`, `Money`, `ProductQuery`, domain exceptions. No HTTP code apart from the status carried by the exceptions. |
-| `edu.itc.shop.api` | `ProductResource`, `ReviewResource` (sub-resource) |
-| `edu.itc.shop.api.dto` | `ProductDto` (JSON + XML), `ProductV2` (`vnd.shop.v2+json`), `CreateReview`, `StockChange`, `Problem` (RFC 9457) |
+| `edu.itc.shop.domain.order` | `Order`, `OrderLine`, `OrderStatus`, `OrderService`, `OrderRepository`, `InMemoryOrderRepository`, `OrderStateException` (challenge) |
+| `edu.itc.shop.api` | `ProductResource`, `ReviewResource` (sub-resource), `OrderResource`, `OpenApiResource` |
+| `edu.itc.shop.api.dto` | `ProductDto` (JSON + XML), `ProductV2` (`vnd.shop.v2+json`), `CreateReview`, `StockChange`, `PlaceOrder`, `OrderDto`, `Problem` (RFC 9457) |
+| `edu.itc.shop.api.idempotency` | `IdempotencyStore` (Idempotency-Key responses + body hash), `UnprocessableContent` (422) |
 | `edu.itc.shop.api.params` | `ProductFilter` (`@BeanParam`), `MoneyConverterProvider` |
 | `edu.itc.shop.api.error` | `ValidationMapper`, `ProblemMapper` |
 | `edu.itc.shop.api.filter` | Task 4 filters and the gzip interceptor |
@@ -90,6 +93,93 @@ Transcript: `docs/task4-http.md` (regenerate with `docs/record-task4.sh`). `Filt
 - **Media-type versioning.** `GET /api/products/{id}` serves `ProductV2` (`Money` object + `available` flag) for `Accept: application/vnd.shop.v2+json`, while plain `Accept: */*` / `application/json` (`qs=1.0`) and `application/vnd.shop.v1+json` stay on v1 (`ProductDto`).
 - **Sub-resource.** `@Path("{id: \\d+}/reviews")` on `ProductResource` is a sub-resource locator returning `new ReviewResource(product, reviews)` backed by a bound thread-safe `ReviewRepository` singleton. `ReviewResource` serves `GET` (list and by id) and validated `POST` (`stars` 1–5, non-blank `author`, `text` ≤ 500 chars → `201` + `Location`). Requests for unknown products fail with `404` in the locator.
 
-Transcript: [docs/task5-http.md](docs/task5-http.md) (regenerate with `docs/record-task5.sh`). Run `mvn -q test` to execute both `FiltersTest` and `Task5Test`.
+Transcript: [docs/task5-http.md](docs/task5-http.md) (regenerate with `docs/record-task5.sh`). Run `mvn -q test` to execute the tests.
 
+## Challenge · Orders, HATEOAS, idempotency, OpenAPI, tests
+
+Transcript: [docs/challenge-http.md](docs/challenge-http.md) (regenerate with `docs/record-challenge.sh` on a fresh server).
+
+| Method | Path | Rel | Success | Errors |
+|---|---|---|---|---|
+| POST | `/api/orders` | | 201 + `Location` | 400, 401, 404 unknown product, 409 insufficient stock, 415, 422, 428 |
+| GET | `/api/orders/{id}` | `self` | 200 | 404 |
+| PUT | `/api/orders/{id}/payment` | `pay` | 200, NEW → PAID | 401, 404, 409 not NEW |
+| DELETE | `/api/orders/{id}` | `cancel` | 200, NEW → CANCELLED, stock restored | 401, 404, 409 not NEW |
+| GET | `/api/openapi` | | 200 `application/yaml` | |
+
+- **Domain.** `edu.itc.shop.domain.order` (`Order`, `OrderLine`, `OrderStatus`, `OrderService`, in-memory repository) has no HTTP code apart from the status carried by its exceptions. `ProductService.reserve` checks every line before taking stock, so a multi-line order reserves all or nothing.
+- **HATEOAS.** Every order response has `Link` headers and a `_links` map: `self` always, `pay` (PUT) and `cancel` (DELETE) only while NEW, and `product-<id>` per line (`rel="product"` in the header). All links come from `UriInfo.getBaseUriBuilder()`, never a hard-coded host. `ShopApiTest` pays and cancels orders by following rels only.
+- **Idempotency.** `POST /orders` needs `Idempotency-Key` (428 otherwise). `IdempotencyStore` (bound singleton) keeps the first 201 per key with a SHA-256 of the body's canonical JSON. Same key and body → the stored 201 with `Idempotency-Replayed: true`. Same key, different body → 422. `ConcurrentHashMap.computeIfAbsent` runs the placement at most once per key, so concurrent retries create one order; a failed attempt (404/409/…) stores nothing.
+- **OpenAPI.** `smallrye-open-api-maven-plugin` runs at `process-classes`, reads the JAX-RS annotations plus `@Tag`/`@Operation`/`@APIResponse`/`@Parameter` on `ProductResource` and `OrderResource`, and writes `target/classes/META-INF/openapi.yaml` (OpenAPI 3.1.0). `OpenApiResource` serves it at `GET /api/openapi`. The annotation API is `provided` scope: it is needed only at build time.
+- **Tests.** `ShopApiTest extends JerseyTest` with `configure()` returning `Main.config()` — the production application with fresh repositories for each test. It has one or more tests for each of 200, 201, 204, 304, 400, 401, 404, 406, 409, 412, 415, 422 and 428, checking the status, `application/problem+json` on errors and the key header (`Location`, `ETag`, `Link`, `Idempotency-Replayed`, `WWW-Authenticate`), plus an 8-thread retry race and the OpenAPI document.
+
+## JAX-RS vs Spring MVC
+
+The same two endpoints written with Jakarta REST (this lab) and Spring MVC (Lab-02, `src/main/java/edu/itc/shop/web/ProductController.java` in the repository root).
+
+**Jakarta REST (Jersey)**
+
+```java
+@Path("/products")
+@Produces({MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML})
+@Consumes({MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML})
+public class ProductResource {
+    private final ProductService service;
+
+    @Inject
+    public ProductResource(ProductService service) { this.service = service; }
+
+    @GET
+    @Path("{id: \\d+}")
+    public Response one(@PathParam("id") long id, @Context Request request) {
+        Product product = service.get(id);                       // NotFoundException → ProblemMapper → 404
+        return cachedProduct(product, ProductDto.from(product), request);   // ETag / 304
+    }
+
+    @POST
+    public Response create(@Valid @NotNull ProductDto dto, @Context UriInfo uriInfo) {
+        Product saved = service.create(dto.toProduct(0, 0));
+        URI location = uriInfo.getAbsolutePathBuilder().path(Long.toString(saved.id())).build();
+        return Response.created(location).entity(ProductDto.from(saved)).build();
+    }
+}
+```
+
+**Spring MVC (Lab-02)**
+
+```java
+@RestController
+@RequestMapping("/api/products")
+public class ProductController {
+    private final ProductService service;
+
+    public ProductController(ProductService service) { this.service = service; }
+
+    @GetMapping("/{id}")
+    public ProductDto get(@PathVariable long id) {
+        return service.findById(id);                             // ProductNotFoundException → @RestControllerAdvice → 404
+    }
+
+    @PostMapping
+    public ResponseEntity<ProductDto> create(@RequestBody @Valid CreateProduct cmd) {
+        ProductDto created = service.create(cmd);
+        URI location = ServletUriComponentsBuilder.fromCurrentRequest()
+                .path("/{id}").buildAndExpand(created.id()).toUri();
+        return ResponseEntity.created(location).body(created);
+    }
+}
+```
+
+| # | Topic | Jakarta REST (Jersey) | Spring MVC |
+|---|---|---|---|
+| 1 | Annotations | `@Path`, `@GET`/`@POST`…, `@PathParam`, `@QueryParam`, `@HeaderParam`, `@BeanParam`; regex in the template (`{id: \d+}`) | `@RestController`, `@RequestMapping`, `@GetMapping`/`@PostMapping`…, `@PathVariable`, `@RequestParam`, `@RequestHeader`; patterns `{id:\d+}` |
+| 2 | Body binding | The one un-annotated parameter is the entity, read by a `MessageBodyReader` chosen from `@Consumes` | Explicit `@RequestBody`, read by an `HttpMessageConverter`; `consumes =` on the mapping |
+| 3 | Response building | `Response.created(uri).entity(…)`, `tag()`, `cacheControl()`, `links()`; `UriInfo` builds URIs; `Request.evaluatePreconditions` for ETags | `ResponseEntity.created(uri).body(…)`, `eTag()`, `cacheControl()`; `ServletUriComponentsBuilder`; `WebRequest.checkNotModified` |
+| 4 | Errors | `WebApplicationException` subclasses carry a status; `ExceptionMapper<T>` providers turn exceptions into responses (RFC 9457 body written by hand) | `@ResponseStatus` exceptions, `@RestControllerAdvice` + `@ExceptionHandler`; built-in `ProblemDetail` / `ResponseEntityExceptionHandler` |
+| 5 | Filters / cross-cutting | `ContainerRequestFilter` / `ContainerResponseFilter` (`@PreMatching`, `@Priority`), `ReaderInterceptor`/`WriterInterceptor`, `@NameBinding` | Servlet `Filter` / `OncePerRequestFilter`, `HandlerInterceptor`, `ResponseBodyAdvice`; ordering with `@Order` |
+| 6 | JSON library | JSON-B (Yasson) via `jersey-media-json-binding`; JAXB for XML | Jackson (`ObjectMapper`) auto-configured by Spring Boot; XML via `jackson-dataformat-xml` |
+| 7 | Dependency injection | HK2 inside Jersey: `@Inject`, objects bound in `AbstractBinder`, `@Context` for request objects; resources are per-request by default | Spring container: component scan, constructor injection without annotation, beans are singletons by default |
+| 8 | Testing | `JerseyTest` starts the real app (`Main.config()`) on an in-memory Grizzly server; requests through the JAX-RS client | `@WebMvcTest` + `MockMvc` (no server) or `@SpringBootTest` + `TestRestTemplate`/`WebTestClient` |
+
+Overall, Jakarta REST is a specification with a small, explicit runtime (we start Grizzly and wire the binder ourselves), while Spring MVC comes with Spring Boot auto-configuration, which does more by convention and less by hand.
 
