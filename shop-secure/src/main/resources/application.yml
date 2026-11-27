@@ -4,19 +4,22 @@ spring:
   datasource:
     url: jdbc:h2:mem:shop;DB_CLOSE_DELAY=-1
     username: sa
-    password: ""
   jpa:
     hibernate:
       ddl-auto: update
     open-in-view: false
   h2:
     console:
-      enabled: true
+      enabled: false
+
+logging:
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level rid=%X{rid} %logger{0} : %msg%n"
 
 shop:
   security:
-    jwt-secret: ${JWT_SECRET}
+    jwt-secret: ${JWT_SECRET:}
     access-token-ttl: 15m
   seed:
-    admin-password: ${SHOP_SEED_ADMIN_PASSWORD:Admin-pass-123}
-    customer-password: ${SHOP_SEED_CUSTOMER_PASSWORD:Alice-pass-123}
+    admin-password: ${SHOP_SEED_ADMIN_PASSWORD:}
+    customer-password: ${SHOP_SEED_CUSTOMER_PASSWORD:}
