@@ -11,10 +11,12 @@ spring:
     open-in-view: false
   h2:
     console:
-      enabled: false
+      enabled: true
 
 shop:
   security:
-    # Never put the real value here: export JWT_SECRET=$(openssl rand -base64 48)
     jwt-secret: ${JWT_SECRET}
     access-token-ttl: 15m
+  seed:
+    admin-password: ${SHOP_SEED_ADMIN_PASSWORD:Admin-pass-123}
+    customer-password: ${SHOP_SEED_CUSTOMER_PASSWORD:Alice-pass-123}

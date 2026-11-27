@@ -4,6 +4,7 @@ import edu.itc.shop.domain.OrderStateException;
 import edu.itc.shop.security.ProblemAccessDeniedHandler;
 import edu.itc.shop.service.OrderNotFoundException;
 import edu.itc.shop.service.ProductNotFoundException;
+import edu.itc.shop.service.UsernameTakenException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -58,6 +59,11 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(OrderStateException.class)
     ProblemDetail orderState(OrderStateException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(UsernameTakenException.class)
+    ProblemDetail usernameTaken(UsernameTakenException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
     }
 

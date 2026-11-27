@@ -9,6 +9,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -67,8 +68,14 @@ public class JwtConfig {
      * Uses PasswordConfig's encoder (Task 2); until it exists, Spring's delegating encoder.
      */
     @Bean
-    AuthenticationManager authenticationManager(UserDetailsService uds, ObjectProvider<PasswordEncoder> encoder) {
-        var provider = new DaoAuthenticationProvider(uds);
+    AuthenticationManager authenticationManager(ObjectProvider<UserDetailsService> uds, ObjectProvider<PasswordEncoder> encoder) {
+        UserDetailsService userDetailsService = uds.getIfAvailable();
+        if (userDetailsService == null) {
+            return authentication -> {
+                throw new BadCredentialsException("No UserDetailsService available");
+            };
+        }
+        var provider = new DaoAuthenticationProvider(userDetailsService);
         provider.setPasswordEncoder(encoder.getIfAvailable(PasswordEncoderFactories::createDelegatingPasswordEncoder));
         return new ProviderManager(provider);
     }
