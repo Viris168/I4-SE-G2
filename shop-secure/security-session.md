@@ -188,3 +188,126 @@ Required cases: anonymous GET **200**, anonymous POST **401**, customer DELETE *
 Extra checks: a second DELETE gives 404 problem+json, invalid input gives 400 with field errors, a wrong password gives
 the same generic 401, and a path outside `/api/**` (`/actuator`) is caught by `anyRequest().denyAll()`.
 No `Set-Cookie` header appears any more (`SessionCreationPolicy.STATELESS`).
+
+## Task 3 · Roles and method security
+
+alice places an order (customer taken from the Authentication), bob is refused by the
+`@PostAuthorize` owner check, admin passes through `hasRole('ADMIN')`. Method-level denials
+return the same `application/problem+json` 403 as URL-level denials.
+
+### 1. alice creates an order - 201
+
+```
+$ curl -i -u alice:*** '-X' 'POST' 'localhost:8080/api/orders' '-H' 'Content-Type: application/json' '-d' '{"productId":2,"quantity":1}'
+HTTP/1.1 201 
+Location: /api/orders/1
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+X-Frame-Options: DENY
+Content-Type: application/json
+
+{"id":1,"customer":"alice","productId":2,"quantity":1,"status":"NEW"}
+
+```
+
+### 2. bob reads alice's order - 403 (@PostAuthorize owner check)
+
+```
+$ curl -i -u bob:*** 'localhost:8080/api/orders/1'
+HTTP/1.1 403 
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+X-Frame-Options: DENY
+Content-Type: application/problem+json
+Content-Length: 107
+
+{"type":"about:blank","title":"Forbidden","status":403,"detail":"Access denied","instance":"/api/orders/1"}
+
+```
+
+### 3. admin reads alice's order - 200
+
+```
+$ curl -i -u admin:*** 'localhost:8080/api/orders/1'
+HTTP/1.1 200 
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+X-Frame-Options: DENY
+Content-Type: application/json
+Content-Length: 69
+
+{"id":1,"customer":"alice","productId":2,"quantity":1,"status":"NEW"}
+
+```
+
+### 4. alice reads bob's history - 403 (@PreAuthorize)
+
+```
+$ curl -i -u alice:*** 'localhost:8080/api/orders?customer=bob'
+HTTP/1.1 403 
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+X-Frame-Options: DENY
+Content-Type: application/problem+json
+Content-Length: 105
+
+{"type":"about:blank","title":"Forbidden","status":403,"detail":"Access denied","instance":"/api/orders"}
+
+```
+
+### 5. admin reads alice's history - 200
+
+```
+$ curl -i -u admin:*** 'localhost:8080/api/orders?customer=alice'
+HTTP/1.1 200 
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+X-Frame-Options: DENY
+Content-Type: application/json
+Content-Length: 71
+
+[{"id":1,"customer":"alice","productId":2,"quantity":1,"status":"NEW"}]
+
+```
+
+### 6. alice tries to ship - 403
+
+```
+$ curl -i -u alice:*** '-X' 'POST' 'localhost:8080/api/orders/1/ship'
+HTTP/1.1 403 
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+X-Frame-Options: DENY
+Content-Type: application/problem+json
+Content-Length: 112
+
+{"type":"about:blank","title":"Forbidden","status":403,"detail":"Access denied","instance":"/api/orders/1/ship"}
+
+```
+
+### 7. admin ships - 204
+
+```
+$ curl -i -u admin:*** '-X' 'POST' 'localhost:8080/api/orders/1/ship'
+HTTP/1.1 204 
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+X-Frame-Options: DENY
+
+
+```
+
+### 8. Security tests
+
+```
+$ ./mvnw -q test -Dtest='Order*SecurityTest'
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0
+```
+

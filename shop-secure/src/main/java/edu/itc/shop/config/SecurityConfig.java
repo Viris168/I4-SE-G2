@@ -24,6 +24,8 @@ public class SecurityConfig {
         http.authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
                 .requestMatchers(HttpMethod.DELETE, "/api/products/**").hasRole("ADMIN")
+                // Task 3, defence in depth: OrderService.ship is also @PreAuthorize("hasRole('ADMIN')")
+                .requestMatchers(HttpMethod.POST, "/api/orders/*/ship").hasRole("ADMIN")
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().denyAll())
             .httpBasic(basic -> basic.authenticationEntryPoint(entryPoint))
@@ -42,6 +44,8 @@ public class SecurityConfig {
     UserDetailsService temporaryUsers() {           // removed in Task 2
         return new InMemoryUserDetailsManager(
             User.withUsername("admin").password("{noop}admin").roles("ADMIN").build(),
-            User.withUsername("alice").password("{noop}alice").roles("CUSTOMER").build());
+            User.withUsername("alice").password("{noop}alice").roles("CUSTOMER").build(),
+            // Task 3: a second customer for the owner-check transcript (bob must not see alice's order)
+            User.withUsername("bob").password("{noop}bob").roles("CUSTOMER").build());
     }
 }
