@@ -22,14 +22,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.crypto.factory.PasswordEncoderFactories;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -37,18 +29,19 @@ import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
-import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.test.context.TestPropertySource;
 
 
 /**
  * Task 4 end to end on a real server: login, use the token, reject expired, malformed and wrong
- * credentials, through Task 1's real filter chain and Task 3's real order API. Until Task 2 is
- * merged, the user is a test-only stand-in (nested here, so the application never scans it).
+ * credentials, through Task 1's real filter chain, Task 2's JPA users and Task 3's real order API.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@TestPropertySource(properties = "JWT_SECRET=test-only-secret-0123456789-0123456789-abcdefghij")
-@Import(AuthFlowIT.StandIns.class)
+@TestPropertySource(properties = {
+        "JWT_SECRET=test-only-secret-0123456789-0123456789-abcdefghij",
+        "shop.seed.admin-password=Admin-pass-123",
+        "shop.seed.customer-password=Alice-pass-123"
+})
 class AuthFlowIT {
 
     private static final Pattern TOKEN = Pattern.compile("\"token\":\"([^\"]+)\"");
@@ -172,23 +165,5 @@ class AuthFlowIT {
         assertTrue(response.headers().firstValue("Content-Type").orElse("").startsWith("application/problem+json"));
         assertTrue(response.body().contains("\"detail\":\"" + detail + "\""), response.body());
         assertTrue(response.body().contains("\"instance\":\"" + instance + "\""), response.body());
-    }
-
-    /**
-     * Test-only stand-in for Task 2; the filter chain is Task 1's real SecurityConfig and
-     * /api/orders is Task 3's real OrderController. Remove when the JPA users (Task 2) are merged.
-     */
-    @TestConfiguration
-    static class StandIns {
-
-        /** Task 2 stand-in: one customer with a bcrypt hash. @Primary over Task 1's temporary users. */
-        @Bean
-        @Primary
-        UserDetailsService testUsers() {
-            PasswordEncoder encoder = PasswordEncoderFactories.createDelegatingPasswordEncoder();
-            return new InMemoryUserDetailsManager(User.withUsername("alice")
-                    .password(encoder.encode("Alice-pass-123")).roles("CUSTOMER").build());
-        }
-
     }
 }

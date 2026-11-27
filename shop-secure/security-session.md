@@ -189,6 +189,100 @@ Extra checks: a second DELETE gives 404 problem+json, invalid input gives 400 wi
 the same generic 401, and a path outside `/api/**` (`/actuator`) is caught by `anyRequest().denyAll()`.
 No `Set-Cookie` header appears any more (`SessionCreationPolicy.STATELESS`).
 
+## Task 2 — Users and passwords in the database
+
+Replaced in-memory users with JPA entities (`UserAccount`, `Role`), bcrypt password hashes produced
+by Spring Security's `DelegatingPasswordEncoder`, and `JpaUserDetailsService`. Public registration endpoint
+at `POST /api/register` with strict validation on username and password policy. Seed users (`admin` with
+ADMIN + CUSTOMER, `alice` with CUSTOMER) are seeded idempotently by `CommandLineRunner` in `ShopSecureApplication`
+reading passwords from properties (`shop.seed.admin-password` and `shop.seed.customer-password`).
+
+### Registration validation failure (short password) - 400
+
+```
+$ curl -i -X POST localhost:8080/api/register -H 'Content-Type: application/json' \
+  -d '{"username":"bob","password":"short"}'
+
+HTTP/1.1 400 
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+Pragma: no-cache
+Expires: 0
+X-Frame-Options: DENY
+Content-Type: application/problem+json
+Transfer-Encoding: chunked
+
+{"detail":"Validation failed","instance":"/api/register","status":400,"title":"Bad Request","errors":[{"field":"password","message":"size must be between 12 and 72"},{"field":"password","message":"must contain an upper-case letter, a lower-case letter and a digit"}]}
+```
+
+### Successful registration - 201
+
+```
+$ curl -i -X POST localhost:8080/api/register -H 'Content-Type: application/json' \
+  -d '{"username":"bob","password":"Correct-Horse-9"}'
+
+HTTP/1.1 201 
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+Pragma: no-cache
+Expires: 0
+X-Frame-Options: DENY
+Content-Type: application/json
+Content-Length: 18
+
+{"username":"bob"}
+```
+
+### Authenticate as newly registered user (Basic Auth) - 200
+
+```
+$ curl -i -u bob:Correct-Horse-9 localhost:8080/api/me
+
+HTTP/1.1 200 
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+Pragma: no-cache
+Expires: 0
+X-Frame-Options: DENY
+Content-Type: application/json
+Content-Length: 40
+
+{"name":"bob","roles":["ROLE_CUSTOMER"]}
+```
+
+### Duplicate username registration - 409
+
+```
+$ curl -i -X POST localhost:8080/api/register -H 'Content-Type: application/json' \
+  -d '{"username":"bob","password":"Correct-Horse-9"}'
+
+HTTP/1.1 409 
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+Pragma: no-cache
+Expires: 0
+X-Frame-Options: DENY
+Content-Type: application/problem+json
+
+{"detail":"Username 'bob' is already taken","instance":"/api/register","status":409,"title":"Conflict"}
+```
+
+### H2 database query: bcrypt password hashes
+
+```
+-- users table (H2)
+ID USERNAME PASSWORD_HASH ENABLED
+1 admin {bcrypt}$2a$10$gG4uMDWQXP3L8oDgw1iWj.0kFrN4pjpvLt5CIzpTIu2/kmzlCYcLa TRUE
+2 alice {bcrypt}$2a$10$OW3UMCBWUPe7OcqR8OSvs.piKlUbgiv5Y5HpqSNxIMsIrYDRwnq1W TRUE
+3 bob {bcrypt}$2a$10$CLO5ZWAI6w15XQrEmTc00uAT4myOf102q4H/.Ynoceys2PVN7fyjC TRUE
+```
+
+The password hash is never logged or returned by any endpoint, and `UserAccount.toString()` excludes `passwordHash`.
+
 ## Task 3 · Roles and method security
 
 alice places an order (customer taken from the Authentication), bob is refused by the
