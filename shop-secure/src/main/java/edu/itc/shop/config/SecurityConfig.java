@@ -48,8 +48,7 @@ public class SecurityConfig {
                 // Task 3, defence in depth: OrderService.ship is also @PreAuthorize("hasRole('ADMIN')")
                 .requestMatchers(HttpMethod.POST, "/api/orders/*/ship").hasRole("ADMIN")
                 .anyRequest().authenticated())
-            .httpBasic(basic -> basic.authenticationEntryPoint(entryPoint))
-            // Task 4: Bearer JWT resource server (HTTP Basic kept for existing Task 2 tests)
+            // Task 4: Bearer JWT resource server; HTTP Basic is gone, credentials only go to /api/auth/login
             .oauth2ResourceServer(o -> o
                 .jwt(j -> j.jwtAuthenticationConverter(jwtConverter))
                 .authenticationEntryPoint(bearerEntryPoint))

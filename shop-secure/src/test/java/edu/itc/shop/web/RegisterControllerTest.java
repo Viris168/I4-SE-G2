@@ -14,11 +14,10 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import tools.jackson.databind.json.JsonMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -109,10 +108,17 @@ class RegisterControllerTest {
             System.out.println(row.get("ID") + " " + row.get("USERNAME") + " " + row.get("PASSWORD_HASH") + " " + (Boolean.TRUE.equals(row.get("ENABLED")) ? "TRUE" : "FALSE"));
         }
 
-        // Authenticate with the new user using HTTP Basic on /api/me
-        String credentials = Base64.getEncoder().encodeToString("bob:Correct-Horse-9".getBytes(StandardCharsets.UTF_8));
+        // Log in as the new user and call /api/me with the Bearer token
+        HttpRequest loginReq = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/auth/login"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{\"username\":\"bob\",\"password\":\"Correct-Horse-9\"}"))
+                .build();
+        HttpResponse<String> loginRes = client.send(loginReq, HttpResponse.BodyHandlers.ofString());
+        assertThat(loginRes.statusCode()).isEqualTo(200);
+        String token = JsonMapper.builder().build().readTree(loginRes.body()).get("token").asString();
+
         HttpRequest meReq = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/me"))
-                .header("Authorization", "Basic " + credentials)
+                .header("Authorization", "Bearer " + token)
                 .GET()
                 .build();
 

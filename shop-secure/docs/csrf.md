@@ -4,7 +4,7 @@
 
 | Order | Filter chain matcher | Credentials accepted | Session policy | CSRF |
 |---|---|---|---|---|
-| 1 | `/api/**` | `Authorization` header only (`Bearer` JWT; HTTP Basic retained for legacy tests), **never cookies** | `STATELESS` | **Disabled** |
+| 1 | `/api/**` | `Authorization` header only (`Bearer` JWT), **never cookies** | `STATELESS` | **Disabled** |
 | 2 | `/products/**` | Public read-only server-rendered HTML (`GET /products/{id}/reviews.html`) | Default | **Enabled** (default) |
 | 3 | Everything else (`/**`) | None (`denyAll()`) | Default | **Enabled** (default) |
 
