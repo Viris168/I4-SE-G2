@@ -407,14 +407,13 @@ $ ./mvnw -q test -Dtest='Order*SecurityTest'
 
 ## Task 4 · JWT login and a stateless API
 
-Recorded with a random `JWT_SECRET` from `openssl rand -base64 48` (only in the environment, never in a file). Until Tasks 1–3 are merged, the user `alice`, `/api/orders` and the filter chain are the test-only stand-ins from `AuthFlowIT`. `Date` and the default security headers are left out.
+Recorded against `./mvnw spring-boot:run` on port 8080 with a random `JWT_SECRET` from `openssl rand -base64 48` (only in the environment, never in a file) and the seed passwords from the README. `$EXPIRED` is a token signed with the same secret whose `exp` lies 100 seconds in the past. Only the status line and the relevant headers are shown. The login response also carries `refreshToken` / `refreshExpiresIn` since the Challenge.
 
 ### Login: an HS256 token, valid for 15 minutes
 
 ```text
-$ curl -s -X POST localhost:8095/api/auth/login -H 'Content-Type: application/json' -d '{"username":"alice","password":"Alice-pass-123"}'
-{"token":"eyJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzaG9wLWFwaSIsInN1YiI6ImFsaWNlIiwiZXhwIjoxNzk1NzQyMzkzLCJpYXQiOjE3OTU3NDE0OTMsImp0aSI6IjQ0NGQ1MTA0LTljZmMtNGExYi1hZjZkLWFlOTAwMDVhNTZhMCIsInJvbGVzIjpbIlJPTEVfQ1VTVE9NRVIiXX0.DaZCm0yDysV3P3zMICscJYYuAZ-WkupW10_KuGzLlOg","tokenType":"Bearer","expiresIn":900}
-
+$ curl -s -X POST localhost:8080/api/auth/login -H 'Content-Type: application/json' -d '{"username":"alice","password":"Alice-pass-123"}'
+{"token":"eyJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzaG9wLWFwaSIsInN1YiI6ImFsaWNlIiwiZXhwIjoxNzk1NzkyMjYzLCJpYXQiOjE3OTU3OTEzNjMsImp0aSI6ImYyYzE4ZGRkLTBjZmEtNGQwNi05ODUxLWJhM2ZlNDI1NjkwNyIsInJvbGVzIjpbIlJPTEVfQ1VTVE9NRVIiXX0.2mZRq6XihDc_8y805aNRh0xfzMBOFVCZEi8HfKjYx6U","tokenType":"Bearer","expiresIn":900,"refreshToken":"hKKQnkwN2dtxNaU_Iho6_Njcey1kRIURYwQizkK6OYQ","refreshExpiresIn":604800}
 ```
 
 ### Decoded token
@@ -423,7 +422,7 @@ The token is three base64url parts: `header.payload.signature`. Decoding the fir
 
 ```json
 {"alg":"HS256"}
-{"iss":"shop-api","sub":"alice","exp":1795742393,"iat":1795741493,"jti":"ab4f7b8b-be04-4778-baf2-71756a93ee53","roles":["ROLE_CUSTOMER"]}
+{"iss":"shop-api","sub":"alice","exp":1795792263,"iat":1795791363,"jti":"f2c18ddd-0cfa-4d06-9851-ba3fe4256907","roles":["ROLE_CUSTOMER"]}
 ```
 
 `exp - iat = 900` seconds (15 minutes), `jti` is a random id, and `roles` becomes the user's authorities.
@@ -433,64 +432,63 @@ The token is three base64url parts: `header.payload.signature`. Decoding the fir
 ### The token gives access, and no session cookie appears
 
 ```text
-$ curl -si localhost:8095/api/orders -H "Authorization: Bearer $TOKEN"
+$ TOKEN=$(curl -s -X POST localhost:8080/api/auth/login -H 'Content-Type: application/json' -d '{"username":"alice","password":"Alice-pass-123"}' | jq -r .token)
+
+$ curl -i localhost:8080/api/orders -H "Authorization: Bearer $TOKEN" -X POST -H 'Content-Type: application/json' -d '{"productId":2,"quantity":1}'
+HTTP/1.1 201 
+Location: /api/orders/1
+Content-Type: application/json
+{"id":1,"customer":"alice","productId":2,"quantity":1,"status":"NEW"}
+
+$ curl -i localhost:8080/api/orders -H "Authorization: Bearer $TOKEN"
 HTTP/1.1 200 
 Content-Type: application/json
-Content-Length: 71
+[{"id":1,"customer":"alice","productId":2,"quantity":1,"status":"NEW"}]
 
-[{"status":"NEW","quantity":1,"productId":2,"id":1,"customer":"alice"}]
-
-
-$ curl -si localhost:8095/api/orders -H "Authorization: Bearer $TOKEN" -X POST -H 'Content-Type: application/json' -d '{"productId":1,"quantity":2}'
+$ curl -i localhost:8080/api/orders -H "Authorization: Bearer $TOKEN" -X POST -H 'Content-Type: application/json' -d '{"productId":1,"quantity":2}'
 HTTP/1.1 201 
+Location: /api/orders/2
 Content-Type: application/json
-Content-Length: 42
-
-{"status":"NEW","id":2,"customer":"alice"}
-
+{"id":2,"customer":"alice","productId":1,"quantity":2,"status":"NEW"}
 ```
 
-There's no `Set-Cookie` in any response: `SessionCreationPolicy.STATELESS`, so the server keeps no session and every request carries its own token.
+There's no `Set-Cookie` in any response (the filter above would have kept it): `SessionCreationPolicy.STATELESS`, so the server keeps no session and every request carries its own token.
 
 ### Expired token: 401 problem+json with a Bearer challenge
 
 ```text
-$ curl -si localhost:8095/api/orders -H "Authorization: Bearer $EXPIRED"
+$ curl -i localhost:8080/api/orders -H "Authorization: Bearer $EXPIRED"
 HTTP/1.1 401 
-WWW-Authenticate: Bearer error="invalid_token", error_description="An error occurred while attempting to decode the Jwt: Jwt expired at 2026-11-27T00:19:53Z", error_uri="https://tools.ietf.org/html/rfc6750#section-3.1", resource_metadata="http://localhost:8095/.well-known/oauth-protected-resource"
+WWW-Authenticate: Bearer error="invalid_token", error_description="An error occurred while attempting to decode the Jwt: Jwt expired at 2026-11-27T14:54:23Z", error_uri="https://tools.ietf.org/html/rfc6750#section-3.1", resource_metadata="http://localhost:8080/.well-known/oauth-protected-resource"
 Content-Type: application/problem+json
-Content-Length: 119
-
 {"type":"about:blank","title":"Unauthorized","status":401,"detail":"Token expired or invalid","instance":"/api/orders"}
-
 ```
 
 ### Malformed token: same 401
 
 ```text
-$ curl -si localhost:8095/api/orders -H 'Authorization: Bearer not.a.jwt'
+$ curl -i localhost:8080/api/orders -H 'Authorization: Bearer not.a.jwt'
 HTTP/1.1 401 
-WWW-Authenticate: Bearer error="invalid_token", error_description="An error occurred while attempting to decode the Jwt: Malformed token", error_uri="https://tools.ietf.org/html/rfc6750#section-3.1", resource_metadata="http://localhost:8095/.well-known/oauth-protected-resource"
+WWW-Authenticate: Bearer error="invalid_token", error_description="An error occurred while attempting to decode the Jwt: Malformed token", error_uri="https://tools.ietf.org/html/rfc6750#section-3.1", resource_metadata="http://localhost:8080/.well-known/oauth-protected-resource"
 Content-Type: application/problem+json
-Content-Length: 119
-
 {"type":"about:blank","title":"Unauthorized","status":401,"detail":"Token expired or invalid","instance":"/api/orders"}
-
 ```
 
-### Wrong password: generic 401
+### Wrong password and unknown user: identical generic 401
 
 ```text
-$ curl -si -X POST localhost:8095/api/auth/login -H 'Content-Type: application/json' -d '{"username":"alice","password":"wrong"}'
+$ curl -i -X POST localhost:8080/api/auth/login -H 'Content-Type: application/json' -d '{"username":"alice","password":"wrong"}'
 HTTP/1.1 401 
 Content-Type: application/problem+json
-Transfer-Encoding: chunked
-
 {"detail":"Bad credentials","instance":"/api/auth/login","status":401,"title":"Unauthorized"}
 
+$ curl -i -X POST localhost:8080/api/auth/login -H 'Content-Type: application/json' -d '{"username":"nobody","password":"Alice-pass-123"}'
+HTTP/1.1 401 
+Content-Type: application/problem+json
+{"detail":"Bad credentials","instance":"/api/auth/login","status":401,"title":"Unauthorized"}
 ```
 
-An unknown user gets exactly the same body (checked in `AuthFlowIT`), so an attacker can't tell which part of the login was wrong.
+Both bodies are byte-for-byte the same, so an attacker can't tell which part of the login was wrong.
 
 ### Tests
 
@@ -501,6 +499,9 @@ An unknown user gets exactly the same body (checked in `AuthFlowIT`), so an atta
 - `Bearer not.a.jwt` gets 401 problem+json
 - no token gets 401
 - a wrong password and an unknown user get the identical generic 401
+
+`OrderControllerSecurityTest` (4 MockMvc tests) uses the `jwt()` post-processor with a `roles` claim and matching
+authorities: anonymous → 401, `Bearer not.a.jwt` → 401 problem+json, a customer on `/ship` → 403, an admin → 204.
 
 ---
 
@@ -679,7 +680,7 @@ Binding to target edu.itc.shop.config.SecurityProps failed:
 
 ### Tests
 
-`HardeningIT` (4 end-to-end tests, executed by `./mvnw verify` alongside `AuthFlowIT` and all unit tests — 23 tests total, 0 failures):
+`HardeningIT` (4 end-to-end tests, executed by `./mvnw verify` alongside `AuthFlowIT` and all unit tests; at the end of Task 5 that was 23 tests, 0 failures, and 31 with the Challenge):
 - CORS preflight allows `http://localhost:5173` (`200`, `Max-Age: 3600`, `Vary: Origin`) and rejects `http://evil.example` (`403`, no `Access-Control-Allow-Origin`)
 - Hardened headers (`nosniff`, `X-Frame-Options: DENY`, HSTS, CSP, `Referrer-Policy`, `X-Request-Id`) appear on both `/api/**` and `/products/{id}/reviews.html`
 - XSS review payload is validated on POST, stored unchanged, returned JSON-escaped with `nosniff`, and HTML-escaped via `th:text`
