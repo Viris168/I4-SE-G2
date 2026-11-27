@@ -31,6 +31,9 @@ public class JpaUserDetailsService implements UserDetailsService {
         if (!account.isEnabled()) {
             builder.disabled(true);
         }
+        if (account.isLocked()) {
+            builder.accountLocked(true);   // DaoAuthenticationProvider throws LockedException -> same generic 401
+        }
 
         return builder.build();
     }

@@ -2,8 +2,10 @@ package edu.itc.shop.web;
 
 import edu.itc.shop.domain.OrderStateException;
 import edu.itc.shop.security.ProblemAccessDeniedHandler;
+import edu.itc.shop.security.RateLimitedException;
 import edu.itc.shop.service.OrderNotFoundException;
 import edu.itc.shop.service.ProductNotFoundException;
+import edu.itc.shop.service.UserNotFoundException;
 import edu.itc.shop.service.UsernameTakenException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -60,6 +62,20 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(OrderStateException.class)
     ProblemDetail orderState(OrderStateException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(UserNotFoundException.class)
+    ProblemDetail userNotFound(UserNotFoundException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    /** 429 from the login rate limiter, with Retry-After in seconds. */
+    @ExceptionHandler(RateLimitedException.class)
+    ResponseEntity<ProblemDetail> rateLimited(RateLimitedException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(ex.getRetryAfterSeconds()))
+                .body(problem);
     }
 
     @ExceptionHandler(UsernameTakenException.class)

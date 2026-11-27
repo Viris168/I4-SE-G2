@@ -45,6 +45,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
                 .requestMatchers(HttpMethod.HEAD, "/api/products/**").permitAll()
                 .requestMatchers(HttpMethod.DELETE, "/api/products/**").hasRole("ADMIN")
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 // Task 3, defence in depth: OrderService.ship is also @PreAuthorize("hasRole('ADMIN')")
                 .requestMatchers(HttpMethod.POST, "/api/orders/*/ship").hasRole("ADMIN")
                 .anyRequest().authenticated())

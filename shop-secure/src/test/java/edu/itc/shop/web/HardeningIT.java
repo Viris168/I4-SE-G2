@@ -14,13 +14,17 @@ import java.net.http.HttpResponse.BodyHandlers;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.test.context.TestPropertySource;
+
+import edu.itc.shop.security.LoginRateLimiter;
 
 /**
  * Task 5 end-to-end verification: CORS, security headers, stored XSS defence (JSON + Thymeleaf),
@@ -44,6 +48,15 @@ class HardeningIT {
     private int port;
 
     // --- CORS -------------------------------------------------------------------------------------
+
+    @Autowired
+    private LoginRateLimiter rateLimiter;
+
+    /** Every test logs in from 127.0.0.1; start each one with fresh login rate-limit counters. */
+    @BeforeEach
+    void resetRateLimiter() {
+        rateLimiter.reset();
+    }
 
     @Test
     void corsAllowsLocalFrontendAndRejectsEvilOrigin() throws Exception {

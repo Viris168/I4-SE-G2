@@ -18,6 +18,7 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,6 +31,8 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.test.context.TestPropertySource;
+
+import edu.itc.shop.security.LoginRateLimiter;
 
 
 /**
@@ -58,6 +61,15 @@ class AuthFlowIT {
 
     @Autowired
     private JwtEncoder encoder;
+
+    @Autowired
+    private LoginRateLimiter rateLimiter;
+
+    /** Every test logs in from 127.0.0.1; start each one with fresh login rate-limit counters. */
+    @BeforeEach
+    void resetRateLimiter() {
+        rateLimiter.reset();
+    }
 
     @Test
     void loginReturnsAnHs256TokenWithAllClaims() throws Exception {

@@ -12,6 +12,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
@@ -19,6 +21,9 @@ import java.util.Set;
 @Entity
 @Table(name = "users")
 public class UserAccount {
+
+    public static final int MAX_FAILED_ATTEMPTS = 5;
+    public static final Duration LOCK_DURATION = Duration.ofMinutes(15);
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -38,6 +43,12 @@ public class UserAccount {
     @CollectionTable(name = "user_roles", joinColumns = @JoinColumn(name = "user_id"))
     @Column(name = "role")
     private Set<Role> roles = new HashSet<>();
+
+    /** Consecutive failed logins; reset by a successful login or when a lock has run out. */
+    @Column(nullable = false)
+    private int failedAttempts;
+
+    private Instant lockedUntil;
 
     protected UserAccount() {}
 
@@ -88,6 +99,35 @@ public class UserAccount {
         this.roles = roles != null ? new HashSet<>(roles) : new HashSet<>();
     }
 
+    public int getFailedAttempts() {
+        return failedAttempts;
+    }
+
+    public Instant getLockedUntil() {
+        return lockedUntil;
+    }
+
+    public boolean isLocked() {
+        return lockedUntil != null && Instant.now().isBefore(lockedUntil);
+    }
+
+    /** One more bad password; the fifth consecutive one locks the account for 15 minutes. */
+    public void registerFailure() {
+        if (lockedUntil != null && !isLocked()) {   // previous lock has run out: start counting again
+            lockedUntil = null;
+            failedAttempts = 0;
+        }
+        failedAttempts++;
+        if (failedAttempts >= MAX_FAILED_ATTEMPTS) {
+            lockedUntil = Instant.now().plus(LOCK_DURATION);
+        }
+    }
+
+    public void resetFailures() {
+        failedAttempts = 0;
+        lockedUntil = null;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -108,6 +148,7 @@ public class UserAccount {
                 ", username='" + username + '\'' +
                 ", enabled=" + enabled +
                 ", roles=" + roles +
+                ", failedAttempts=" + failedAttempts +
                 '}';
     }
 }

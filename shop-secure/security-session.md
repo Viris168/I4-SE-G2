@@ -684,3 +684,96 @@ Binding to target edu.itc.shop.config.SecurityProps failed:
 - Hardened headers (`nosniff`, `X-Frame-Options: DENY`, HSTS, CSP, `Referrer-Policy`, `X-Request-Id`) appear on both `/api/**` and `/products/{id}/reviews.html`
 - XSS review payload is validated on POST, stored unchanged, returned JSON-escaped with `nosniff`, and HTML-escaped via `th:text`
 - `SECURITY` logger records `login.failed`, `login.ok`, and `access.denied` (both method-level and URL-level) with the request's `rid`
+
+## Challenge · Refresh tokens, lockout, audit log and OWASP checklist
+
+Recorded against `./mvnw spring-boot:run` with `SHOP_SEED_*` set as in the README. Sections 4 and 5 were
+run one minute after the previous section so the per-IP rate-limit window had reset.
+
+### 1. Login returns a refresh token
+
+```text
+$ curl -s -X POST localhost:8080/api/auth/login -H 'Content-Type: application/json' -d '{"username":"alice","password":"Alice-pass-123"}'
+{"token":"eyJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzaG9wLWFwaSIsInN1YiI6ImFsaWNlIiwiZXhwIjoxNzk1NzkxNzk5LCJpYXQiOjE3OTU3OTA4OTksImp0aSI6IjgwM2JhNDRkLWNmZmQtNDg5Ny04N2RmLTlmNmZhM2YyZTk5NCIsInJvbGVzIjpbIlJPTEVfQ1VTVE9NRVIiXX0.frLMuVhsicc1-Zaox08C9pYDVb9IZSKDXcUsQp-jdPY","tokenType":"Bearer","expiresIn":900,"refreshToken":"CZ_I3ixLF-V5Sx47pjIfo5f6naO1P1w-C1ceTUQQI8U","refreshExpiresIn":604800}
+```
+
+### 2. Refresh rotates the token
+
+```text
+$ curl -s -X POST localhost:8080/api/auth/refresh -H 'Content-Type: application/json' -d '{"refreshToken":"CZ_I3ixLF-V5Sx47pjIfo5f6naO1P1w-C1ceTUQQI8U"}'
+{"token":"eyJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzaG9wLWFwaSIsInN1YiI6ImFsaWNlIiwiZXhwIjoxNzk1NzkxNzk5LCJpYXQiOjE3OTU3OTA4OTksImp0aSI6IjIwNmViMjI1LTg5MTMtNDgwOC1hN2ZmLWUwNDRiMTJlYjU1ZSIsInJvbGVzIjpbIlJPTEVfQ1VTVE9NRVIiXX0.-0J74KmGXOfULvgCkThILHTw4DF6aurL0tvkfJHYiGY","tokenType":"Bearer","expiresIn":900,"refreshToken":"eZ03ujlc87Owl6wMDsXUB89pdGXwmGYj-zJEQMrtVck","refreshExpiresIn":604800}
+```
+
+### 3. Reusing the rotated token: 401, and the whole family is revoked
+
+```text
+$ curl -i -X POST localhost:8080/api/auth/refresh -H 'Content-Type: application/json' -d '{"refreshToken":"CZ_I3ixLF-V5Sx47pjIfo5f6naO1P1w-C1ceTUQQI8U"}'
+HTTP/1.1 401
+Content-Type: application/problem+json
+{"detail":"Refresh token invalid","instance":"/api/auth/refresh","status":401,"title":"Unauthorized"}
+
+# the newest token of the same family no longer works either
+$ curl -i -X POST localhost:8080/api/auth/refresh -H 'Content-Type: application/json' -d '{"refreshToken":"eZ03ujlc87Owl6wMDsXUB89pdGXwmGYj-zJEQMrtVck"}'
+HTTP/1.1 401
+Content-Type: application/problem+json
+{"detail":"Refresh token invalid","instance":"/api/auth/refresh","status":401,"title":"Unauthorized"}
+
+```
+
+### 4. Brute force: 5 failures, then the rate limiter (new minute, fresh counters)
+
+```text
+$ for i in 1 2 3 4 5 6; do curl -s -o /dev/null -w '%{http_code} ' -X POST localhost:8080/api/auth/login \
+      -H 'Content-Type: application/json' -d '{"username":"alice","password":"nope"}'; done
+401 401 401 401 401 429
+
+$ curl -i -X POST localhost:8080/api/auth/login -H 'Content-Type: application/json' -d '{"username":"alice","password":"nope"}'
+HTTP/1.1 429
+Retry-After: 59
+Content-Type: application/problem+json
+{"detail":"Too many login attempts","instance":"/api/auth/login","status":429,"title":"Too Many Requests"}
+
+```
+
+### 5. Locked account: the correct password gets the same generic 401 (one minute later)
+
+```text
+$ curl -i -X POST localhost:8080/api/auth/login -H 'Content-Type: application/json' -d '{"username":"alice","password":"Alice-pass-123"}'
+HTTP/1.1 401
+Content-Type: application/problem+json
+{"detail":"Bad credentials","instance":"/api/auth/login","status":401,"title":"Unauthorized"}
+
+```
+
+### 6. Audit log (ADMIN only)
+
+```text
+$ ADMIN=$(curl -s -X POST localhost:8080/api/auth/login -H 'Content-Type: application/json' -d '{"username":"admin","password":"Admin-pass-123"}' | jq -r .token)
+$ curl -s 'localhost:8080/api/admin/audit?username=alice' -H "Authorization: Bearer $ADMIN" \
+      | jq -r '.[] | [.id,.type,.username,.ip,.requestId,.detail] | @tsv'
+10	LOCKED	alice	0:0:0:0:0:0:0:1	4c6509dd	login attempt while locked
+9	LOCKED	alice	0:0:0:0:0:0:0:1	725192d6	locked until 2026-11-27T15:04:22.336218814Z after 5 failures
+8	LOGIN_FAILED	alice	0:0:0:0:0:0:0:1	e639930e	attempt 4/5
+7	LOGIN_FAILED	alice	0:0:0:0:0:0:0:1	dc1c6ea4	attempt 3/5
+6	LOGIN_FAILED	alice	0:0:0:0:0:0:0:1	7e8142e8	attempt 2/5
+5	LOGIN_FAILED	alice	0:0:0:0:0:0:0:1	ff1657c9	attempt 1/5
+4	REFRESH_REUSE_DETECTED	alice	0:0:0:0:0:0:0:1	2ae4ec3b	family=853acd5e-b24e-4b2a-9fc1-e1ed5f6d060f tokenId=2 revoked=0
+3	REFRESH_REUSE_DETECTED	alice	0:0:0:0:0:0:0:1	15af40e7	family=853acd5e-b24e-4b2a-9fc1-e1ed5f6d060f tokenId=1 revoked=1
+2	TOKEN_REFRESHED	alice	0:0:0:0:0:0:0:1	70652dd6	family=853acd5e-b24e-4b2a-9fc1-e1ed5f6d060f tokenId=1->2
+1	LOGIN_OK	alice	0:0:0:0:0:0:0:1	9ca475ea
+```
+
+Row 3 is the reuse of the rotated token (it revokes the one live token left in the family); row 4 is the
+attempt with the newest token, which is now revoked as well. Rows 5 to 9 show the lockout building up,
+row 10 the correct password being refused while locked, although the client only ever saw `Bad credentials`.
+
+### Tests
+
+```text
+$ ./mvnw -q verify
+OrderServiceSecurityTest     5   OrderControllerSecurityTest  4   RegisterControllerTest  5
+AuthFlowIT                   6   HardeningIT                  4   AuthLifecycleIT         7
+Tests run: 31, Failures: 0, Errors: 0, Skipped: 0
+```
+
+The OWASP Top 10 mapping is in [docs/owasp-checklist.md](docs/owasp-checklist.md).
