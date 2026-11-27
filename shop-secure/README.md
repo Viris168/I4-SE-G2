@@ -7,8 +7,9 @@ Spring Boot 4.1.1 · Spring Security 7.1 · JDK 25 · Maven 3.9 (wrapper include
 ```bash
 cp .env.example .env             # set JWT_SECRET, SHOP_SEED_ADMIN_PASSWORD, SHOP_SEED_CUSTOMER_PASSWORD
 export JWT_SECRET=$(openssl rand -base64 48)
-export SHOP_SEED_ADMIN_PASSWORD=Admin-pass-123
-export SHOP_SEED_CUSTOMER_PASSWORD=Alice-pass-123
+export SHOP_SEED_ADMIN_PASSWORD='<choose-one>'      # 12+ chars, upper, lower and digit
+export SHOP_SEED_CUSTOMER_PASSWORD='<choose-one>'
+# the tests set their own test-only values; only JWT_SECRET is needed for ./mvnw verify
 ./mvnw -q verify                 # build + unit + integration tests
 ./mvnw spring-boot:run           # http://localhost:8080
 ```

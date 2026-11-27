@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Captures the live Task 5 HTTP calls against a running server on localhost:8080.
-# Requires SHOP_SEED_CUSTOMER_PASSWORD (e.g. Alice-pass-123) to be set in the environment.
+# Requires SHOP_SEED_CUSTOMER_PASSWORD to be set in the environment (the password alice was seeded with).
 set -u
 BASE="${BASE:-http://localhost:8080}"
-ALICE_PASS="${SHOP_SEED_CUSTOMER_PASSWORD:-Alice-pass-123}"
+ALICE_PASS="${SHOP_SEED_CUSTOMER_PASSWORD:?set SHOP_SEED_CUSTOMER_PASSWORD}"
 
 echo "=== 1. CORS preflight (allowed origin) ==="
 curl -si -X OPTIONS "$BASE/api/orders" \

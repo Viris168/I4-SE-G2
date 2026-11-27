@@ -12,12 +12,16 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.UUID;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Opaque refresh tokens with rotation. Each use hands out a successor and revokes the old token;
  * presenting a revoked token again means it was copied, so the whole family is revoked.
+ * A token only rotates while its user still exists, is enabled and is not locked.
  */
 @Service
 public class RefreshTokenService {
@@ -26,14 +30,19 @@ public class RefreshTokenService {
 
     private final RefreshTokenRepository repo;
     private final AuditService audit;
+    private final UserDetailsService users;
     private final SecureRandom random = new SecureRandom();
 
-    public RefreshTokenService(RefreshTokenRepository repo, AuditService audit) {
+    public RefreshTokenService(RefreshTokenRepository repo, AuditService audit, UserDetailsService users) {
         this.repo = repo;
         this.audit = audit;
+        this.users = users;
     }
 
     public record Issued(String rawToken, RefreshToken entity) {}
+
+    /** The successor token plus the freshly loaded user, whose current roles go into the new access token. */
+    public record Rotated(String rawToken, UserDetails user) {}
 
     /** A new token in {@code family}; pass a fresh UUID at login. */
     @Transactional
@@ -47,10 +56,10 @@ public class RefreshTokenService {
 
     /**
      * Exchanges a valid token for its successor. noRollbackFor keeps the family revocation
-     * committed although the reuse case ends in an exception.
+     * committed although the reuse and the account cases end in an exception.
      */
     @Transactional(noRollbackFor = InvalidRefreshTokenException.class)
-    public Issued rotate(String raw) {
+    public Rotated rotate(String raw) {
         RefreshToken current = repo.findByTokenHash(sha256(raw))
                 .orElseThrow(() -> new InvalidRefreshTokenException("unknown"));
         if (current.isRevoked()) {
@@ -62,11 +71,16 @@ public class RefreshTokenService {
         if (current.isExpired()) {
             throw new InvalidRefreshTokenException("expired");
         }
+        UserDetails user = activeUser(current.getUsername());
+        if (user == null) {
+            repo.revokeFamily(current.getFamilyId(), Instant.now());
+            throw new InvalidRefreshTokenException("account deleted, disabled or locked");
+        }
         Issued next = issue(current.getUsername(), current.getFamilyId());
         current.revoke(next.entity().getId());
         audit.record(AuditType.TOKEN_REFRESHED, current.getUsername(),
                 "family=" + current.getFamilyId() + " tokenId=" + current.getId() + "->" + next.entity().getId());
-        return next;
+        return new Rotated(next.rawToken(), user);
     }
 
     /** Logout: revokes every token of the presented token's family. Unknown tokens are ignored. */
@@ -78,9 +92,14 @@ public class RefreshTokenService {
         });
     }
 
-    @Transactional
-    public void revokeFamily(UUID family) {
-        repo.revokeFamily(family, Instant.now());
+    /** The user if they may still get tokens, otherwise null. */
+    private UserDetails activeUser(String username) {
+        try {
+            UserDetails user = users.loadUserByUsername(username);
+            return (user.isEnabled() && user.isAccountNonLocked()) ? user : null;
+        } catch (UsernameNotFoundException e) {
+            return null;
+        }
     }
 
     static String sha256(String s) {

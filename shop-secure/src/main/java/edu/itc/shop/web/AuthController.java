@@ -13,8 +13,6 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
@@ -49,17 +47,14 @@ public class AuthController {
     private final JwtEncoder encoder;
     private final SecurityProps props;
     private final RefreshTokenService refreshTokens;
-    private final UserDetailsService users;
     private final LoginRateLimiter rateLimiter;
 
     public AuthController(AuthenticationManager authManager, JwtEncoder encoder, SecurityProps props,
-                          RefreshTokenService refreshTokens, UserDetailsService users,
-                          LoginRateLimiter rateLimiter) {
+                          RefreshTokenService refreshTokens, LoginRateLimiter rateLimiter) {
         this.authManager = authManager;
         this.encoder = encoder;
         this.props = props;
         this.refreshTokens = refreshTokens;
-        this.users = users;
         this.rateLimiter = rateLimiter;
     }
 
@@ -72,19 +67,11 @@ public class AuthController {
         return tokens(auth.getName(), auth.getAuthorities(), refresh.rawToken());
     }
 
-    /**
-     * Rotates the refresh token. The user is reloaded, so a disabled or locked account cannot refresh
-     * and changed roles show up in the new access token.
-     */
+    /** Rotates the refresh token; the new access token carries the user's current roles. */
     @PostMapping("/refresh")
     public TokenResponse refresh(@RequestBody @Valid RefreshRequest req) {
         var next = refreshTokens.rotate(req.refreshToken());
-        UserDetails user = users.loadUserByUsername(next.entity().getUsername());
-        if (!user.isEnabled() || !user.isAccountNonLocked()) {
-            refreshTokens.revokeFamily(next.entity().getFamilyId());
-            throw new InvalidRefreshTokenException("account disabled or locked");
-        }
-        return tokens(user.getUsername(), user.getAuthorities(), next.rawToken());
+        return tokens(next.user().getUsername(), next.user().getAuthorities(), next.rawToken());
     }
 
     /** Revokes the whole family of the presented token. Always 204, so it says nothing about the token. */

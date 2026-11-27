@@ -14,8 +14,6 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -100,13 +98,10 @@ class RegisterControllerTest {
         assertFalse(bob.toString().contains(bob.getPasswordHash()));
         assertFalse(bob.toString().contains("Correct-Horse-9"));
 
-        // Query H2 table directly
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList("SELECT ID, USERNAME, PASSWORD_HASH, ENABLED FROM USERS");
-        System.out.println("-- users table (H2)");
-        System.out.println("ID USERNAME PASSWORD_HASH ENABLED");
-        for (Map<String, Object> row : rows) {
-            System.out.println(row.get("ID") + " " + row.get("USERNAME") + " " + row.get("PASSWORD_HASH") + " " + (Boolean.TRUE.equals(row.get("ENABLED")) ? "TRUE" : "FALSE"));
-        }
+        // The stored value is a bcrypt hash; only checked, never printed
+        String stored = jdbcTemplate.queryForObject(
+                "SELECT PASSWORD_HASH FROM USERS WHERE USERNAME = ?", String.class, "bob");
+        assertThat(stored).startsWith("{bcrypt}$2a$10$").doesNotContain("Correct-Horse-9");
 
         // Log in as the new user and call /api/me with the Bearer token
         HttpRequest loginReq = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/auth/login"))

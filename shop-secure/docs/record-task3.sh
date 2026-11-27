@@ -5,7 +5,7 @@
 #
 # Credentials default to the temporary Task 1 users (alice/alice, bob/bob, admin/admin).
 # Once Task 2's database users are merged, override them, e.g.
-#   ALICE=alice:Alice-pass-123 BOB=bob:Correct-Horse-9 ADMIN=admin:Admin-pass-123 bash docs/record-task3.sh
+#   ALICE="alice:$SHOP_SEED_CUSTOMER_PASSWORD" BOB="bob:<bob's password>" ADMIN="admin:$SHOP_SEED_ADMIN_PASSWORD" bash docs/record-task3.sh
 set -u
 BASE=localhost:8080/api
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
