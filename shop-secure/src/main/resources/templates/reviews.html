@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title th:text="${'Reviews for ' + product.name}">Product Reviews</title>
+</head>
+<body>
+<h1 th:text="${product.name}">Product</h1>
+<section th:if="${#lists.isEmpty(reviews)}">
+    <p>No reviews yet.</p>
+</section>
+<article th:each="review : ${reviews}">
+    <h2 th:text="${review.author + ' (' + review.stars + '/5)'}">Author</h2>
+    <p th:text="${review.text}">Review text</p>
+</article>
+</body>
+</html>

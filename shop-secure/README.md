@@ -5,7 +5,11 @@ Spring Boot 4.1.1 · Spring Security 7.1 · JDK 25 · Maven 3.9 (wrapper include
 ## How to run
 
 ```bash
-./mvnw -q verify                 # build + tests
+cp .env.example .env             # set JWT_SECRET, SHOP_SEED_ADMIN_PASSWORD, SHOP_SEED_CUSTOMER_PASSWORD
+export JWT_SECRET=$(openssl rand -base64 48)
+export SHOP_SEED_ADMIN_PASSWORD=Admin-pass-123
+export SHOP_SEED_CUSTOMER_PASSWORD=Alice-pass-123
+./mvnw -q verify                 # build + unit + integration tests
 ./mvnw spring-boot:run           # http://localhost:8080
 ```
 
@@ -68,3 +72,19 @@ Its `UserDetailsService` bean makes `UserDetailsServiceAutoConfiguration` back o
   `security/ProblemAccessDeniedHandler`. Validation errors and not-found go through `web/ApiExceptionHandler`.
 
 Temporary users (until Task 2): `admin/admin` (ADMIN), `alice/alice` (CUSTOMER).
+
+
+## Task 5 — Hardening: CSRF, CORS, headers, XSS, secrets, logging
+
+- **CSRF strategy ([docs/csrf.md](docs/csrf.md)).** `SecurityConfig` splits the application into three ordered chains:
+  - `@Order(1)` `/api/**` — stateless (`SessionCreationPolicy.STATELESS`), credentials via `Authorization` header only (never cookies), so CSRF is disabled.
+  - `@Order(2)` `/products/**` — public read-only `GET`/`HEAD /products/{id}/reviews.html` Thymeleaf page, CSRF left enabled by default.
+  - `@Order(3)` fallback — `anyRequest().denyAll()` (except `DispatcherType.ERROR`).
+- **CORS (`config/CorsConfig`).** Allows only `http://localhost:5173` on `/api/**` (`GET, POST, PUT, DELETE`, headers `Authorization` and `Content-Type`, exposed `Location`, `Max-Age: 3600`). Any other origin (e.g. `http://evil.example`) receives `403` without `Access-Control-Allow-Origin`.
+- **Security headers.** Every chain applies `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Strict-Transport-Security: max-age=31536000 ; includeSubDomains`, `Content-Security-Policy: default-src 'self'; frame-ancestors 'none'; object-src 'none'`, and `Referrer-Policy: strict-origin-when-cross-origin`.
+  - *Note on HSTS:* `.requestMatcher(AnyRequestMatcher.INSTANCE)` is enabled so HSTS appears over plain `http://localhost:8080` during the lab; in production remove that matcher so Spring Security's default (HTTPS-only) applies.
+- **Stored XSS defence (`Review`, `ReviewService`, `ReviewController`, `templates/reviews.html`).** `POST /api/reviews` (authenticated, validated `@Min(1) @Max(5)` stars, `@NotBlank @Size(max=1000)` text) stores text unchanged; `GET /api/products/{id}/reviews` returns JSON escaped by Jackson with `nosniff`, and `GET /products/{id}/reviews.html` renders reviews with Thymeleaf `th:text` (HTML-entity encoded).
+- **Secrets & fail-fast.** No literal secrets remain in `src/main` or `application.yml`; `spring.h2.console.enabled` is `false`. Required variables are listed without values in [`.env.example`](.env.example). Missing or short `JWT_SECRET` fails startup immediately via `@Validated SecurityProps`.
+- **Security logging (`RequestIdFilter`, `SecurityEventLogger`).** `RequestIdFilter` (instantiated in `SecurityConfig`, never `@Component`) sets MDC `rid` and response header `X-Request-Id`. `JwtConfig` connects Boot's `AuthenticationEventPublisher` to `ProviderManager` and `SecurityConfig` exposes `SpringAuthorizationEventPublisher`, so `SecurityEventLogger` writes `login.failed`, `login.ok`, and `access.denied` lines with `rid=%X{rid}` to the `SECURITY` logger.
+
+Transcripts and `th:utext` counter-example: [security-session.md](security-session.md#task-5--hardening-csrf-cors-headers-xss-secrets-logging). Verification tests: `HardeningIT`.

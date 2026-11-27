@@ -501,3 +501,186 @@ An unknown user gets exactly the same body (checked in `AuthFlowIT`), so an atta
 - `Bearer not.a.jwt` gets 401 problem+json
 - no token gets 401
 - a wrong password and an unknown user get the identical generic 401
+
+---
+
+## Task 5 — Hardening: CSRF, CORS, headers, XSS, secrets, logging
+
+Recorded against a live run started with only the variables from `.env.example` (`JWT_SECRET`, `SHOP_SEED_ADMIN_PASSWORD`, `SHOP_SEED_CUSTOMER_PASSWORD`). Reproducible with `docs/record-task5.sh`.
+
+### 1. CSRF strategy
+
+Documented in [docs/csrf.md](docs/csrf.md):
+- `@Order(1)` `/api/**` chain is `STATELESS` and accepts credentials only via the `Authorization` header (never cookies), so CSRF is disabled with an explicit justification comment.
+- `@Order(2)` `/products/**` serves only public read-only `GET`/`HEAD` HTML (`reviews.html`), with CSRF left enabled by default.
+- `docs/csrf.md` also documents the `CookieCsrfTokenRepository.withHttpOnlyFalse()` + `X-XSRF-TOKEN` `fetch` configuration required if a cookie-authenticated SPA chain were added.
+
+### 2. CORS preflight (allowed origin vs rejected evil origin)
+
+Allowed front-end origin (`http://localhost:5173`):
+
+```text
+$ curl -i -X OPTIONS localhost:8080/api/orders \
+  -H 'Origin: http://localhost:5173' \
+  -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: authorization,content-type'
+HTTP/1.1 200
+Vary: Origin
+Vary: Access-Control-Request-Method
+Vary: Access-Control-Request-Headers
+Access-Control-Allow-Origin: http://localhost:5173
+Access-Control-Allow-Methods: GET,POST,PUT,DELETE
+Access-Control-Allow-Headers: authorization, content-type
+Access-Control-Expose-Headers: Location
+Access-Control-Max-Age: 3600
+Content-Length: 0
+```
+
+Rejected origin (`http://evil.example`) — `403` with **no** `Access-Control-Allow-Origin` header:
+
+```text
+$ curl -i -X OPTIONS localhost:8080/api/orders \
+  -H 'Origin: http://evil.example' \
+  -H 'Access-Control-Request-Method: POST'
+HTTP/1.1 403
+Vary: Origin
+Vary: Access-Control-Request-Method
+Vary: Access-Control-Request-Headers
+
+Invalid CORS request
+```
+
+### 3. Security headers (`curl -I`)
+
+```text
+$ curl -I localhost:8080/api/products | grep -iE '^HTTP/|x-frame|strict-transport|content-security|referrer|x-content|x-request-id'
+HTTP/1.1 200
+X-Request-Id: 7f0b399d
+X-Content-Type-Options: nosniff
+Strict-Transport-Security: max-age=31536000 ; includeSubDomains
+X-Frame-Options: DENY
+Content-Security-Policy: default-src 'self'; frame-ancestors 'none'; object-src 'none'
+Referrer-Policy: strict-origin-when-cross-origin
+```
+
+(HSTS uses `AnyRequestMatcher.INSTANCE` during the lab so it is visible over plain HTTP on `localhost`; production removes that matcher so Spring Security sends HSTS only over HTTPS.)
+
+### 4. Stored XSS demo (JSON API + Thymeleaf `th:text` vs `th:utext`)
+
+Posting the XSS payload as `alice`:
+
+```text
+$ curl -i -X POST localhost:8080/api/reviews \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"productId":2,"stars":1,"text":"<img src=x onerror=\"document.title='\''pwned'\''\">"}'
+HTTP/1.1 201
+Location: /api/products/2/reviews
+Content-Type: application/json
+
+{"id":1,"author":"alice","stars":1,"text":"<img src=x onerror=\"document.title='pwned'\">"}
+```
+
+**(a) JSON API** — stored unchanged, returned JSON-escaped by Jackson with `Content-Type: application/json` and `X-Content-Type-Options: nosniff` (so browsers will not sniff the JSON as HTML):
+
+```text
+$ curl -si localhost:8080/api/products/2/reviews
+HTTP/1.1 200
+X-Content-Type-Options: nosniff
+Content-Type: application/json
+
+[{"id":1,"author":"alice","stars":1,"text":"<img src=x onerror=\"document.title='pwned'\">"}]
+```
+
+**(b) Thymeleaf HTML page (`th:text`)** — served by the `@Order(2)` `/products/**` chain with the same hardened security headers; Thymeleaf encodes `<`, `>`, `"`, and `'` as HTML entities so the payload renders as harmless literal text:
+
+```html
+$ curl -si localhost:8080/products/2/reviews.html
+HTTP/1.1 200
+X-Request-Id: 126dd95b
+X-Content-Type-Options: nosniff
+Strict-Transport-Security: max-age=31536000 ; includeSubDomains
+X-Frame-Options: DENY
+Content-Security-Policy: default-src 'self'; frame-ancestors 'none'; object-src 'none'
+Referrer-Policy: strict-origin-when-cross-origin
+Content-Type: text/html;charset=UTF-8
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Reviews for Wireless mouse</title>
+</head>
+<body>
+<h1>Wireless mouse</h1>
+
+<article>
+    <h2>alice (1/5)</h2>
+    <p>&lt;img src=x onerror=&quot;document.title=&#39;pwned&#39;&quot;&gt;</p>
+</article>
+</body>
+</html>
+```
+
+**(c) Counter-example with `th:utext` (tested locally, never merged)**
+
+Switching `<p th:text="${review.text}">` to `<p th:utext="${review.text}">` outputs raw unescaped HTML directly into the DOM:
+
+```html
+<!-- DANGEROUS: th:utext emits raw HTML (not merged) -->
+<article>
+    <h2>alice (1/5)</h2>
+    <p><img src=x onerror="document.title='pwned'"></p>
+</article>
+```
+
+Without output encoding, the browser parses `<img>` as an HTML element, fails to load `src=x`, and attempts to execute the inline `onerror` handler (`document.title='pwned'`). Using `th:text` neutralises XSS at the template layer, while our `Content-Security-Policy: default-src 'self'; frame-ancestors 'none'; object-src 'none'` acts as defence in depth by blocking inline event handlers even if a template mistake occurred.
+
+### 5. Secrets audit & fail-fast start-up
+
+All secrets in `application.yml` and `ShopSecureApplication.java` are placeholders (`${JWT_SECRET:}`, `${SHOP_SEED_ADMIN_PASSWORD:}`, `${SHOP_SEED_CUSTOMER_PASSWORD:}`), and `.env.example` documents the required variables without values. `spring.h2.console.enabled` is `false`.
+
+```text
+$ git grep -n -i -E "password|secret" -- 'src/main/resources/*.yml'
+src/main/resources/application.yml:21:    jwt-secret: ${JWT_SECRET:}
+src/main/resources/application.yml:24:    admin-password: ${SHOP_SEED_ADMIN_PASSWORD:}
+src/main/resources/application.yml:25:    customer-password: ${SHOP_SEED_CUSTOMER_PASSWORD:}
+```
+
+Starting the application with `JWT_SECRET` empty/unset fails fast during `@Validated` `SecurityProps` binding:
+
+```text
+$ JWT_SECRET= ./mvnw -q spring-boot:run
+***************************
+APPLICATION FAILED TO START
+***************************
+
+Binding to target edu.itc.shop.config.SecurityProps failed:
+
+    Property: shop.security.jwtSecret
+    Value: ""
+    Reason: size must be between 32 and 2147483647
+
+    Property: shop.security.jwtSecret
+    Value: ""
+    Reason: must not be blank
+```
+
+### 6. Security event logging & `X-Request-Id` (`rid` MDC)
+
+`RequestIdFilter` (instantiated in `SecurityConfig`, not `@Component`) populates `MDC["rid"]` and `X-Request-Id`. `JwtConfig` wires `AuthenticationEventPublisher` into `ProviderManager`, and `SecurityConfig` registers `SpringAuthorizationEventPublisher`. The `SECURITY` logger emits failed login, successful login, and access denied lines with matching request ids:
+
+```text
+18:59:40.069 WARN  rid=f33b3de0 SECURITY : login.failed user=alice reason=BadCredentialsException
+18:59:40.253 INFO  rid=0e2332dc SECURITY : login.ok user=alice type=UsernamePasswordAuthenticationToken
+18:59:41.236 WARN  rid=bd117822 SECURITY : access.denied user=alice object=OrderService.history(bob)
+18:59:41.330 WARN  rid=fa813882 SECURITY : access.denied user=alice object=POST /api/orders/1/ship
+```
+
+### Tests
+
+`HardeningIT` (4 end-to-end tests, executed by `./mvnw verify` alongside `AuthFlowIT` and all unit tests — 23 tests total, 0 failures):
+- CORS preflight allows `http://localhost:5173` (`200`, `Max-Age: 3600`, `Vary: Origin`) and rejects `http://evil.example` (`403`, no `Access-Control-Allow-Origin`)
+- Hardened headers (`nosniff`, `X-Frame-Options: DENY`, HSTS, CSP, `Referrer-Policy`, `X-Request-Id`) appear on both `/api/**` and `/products/{id}/reviews.html`
+- XSS review payload is validated on POST, stored unchanged, returned JSON-escaped with `nosniff`, and HTML-escaped via `th:text`
+- `SECURITY` logger records `login.failed`, `login.ok`, and `access.denied` (both method-level and URL-level) with the request's `rid`

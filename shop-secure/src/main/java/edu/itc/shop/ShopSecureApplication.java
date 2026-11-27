@@ -24,16 +24,16 @@ public class ShopSecureApplication {
 	@Bean
 	CommandLineRunner seedUsers(ObjectProvider<AccountService> accountService,
 			ObjectProvider<UserAccountRepository> repository,
-			@Value("${shop.seed.admin-password:Admin-pass-123}") String adminPassword,
-			@Value("${shop.seed.customer-password:Alice-pass-123}") String customerPassword) {
+			@Value("${shop.seed.admin-password:}") String adminPassword,
+			@Value("${shop.seed.customer-password:}") String customerPassword) {
 		return args -> {
 			AccountService accounts = accountService.getIfAvailable();
 			UserAccountRepository users = repository.getIfAvailable();
 			if (accounts != null && users != null) {
-				if (!users.existsByUsername("admin")) {
+				if (!adminPassword.isBlank() && !users.existsByUsername("admin")) {
 					accounts.register("admin", adminPassword, Set.of(Role.ADMIN, Role.CUSTOMER));
 				}
-				if (!users.existsByUsername("alice")) {
+				if (!customerPassword.isBlank() && !users.existsByUsername("alice")) {
 					accounts.register("alice", customerPassword, Set.of(Role.CUSTOMER));
 				}
 			}
