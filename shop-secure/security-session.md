@@ -623,19 +623,33 @@ Content-Type: text/html;charset=UTF-8
 </html>
 ```
 
-**(c) Counter-example with `th:utext` (tested locally, never merged)**
+**(c) Counter-example with `th:utext` (local branch `xss-utext-demo`, never merged)**
 
-Switching `<p th:text="${review.text}">` to `<p th:utext="${review.text}">` outputs raw unescaped HTML directly into the DOM:
+On the throwaway branch `xss-utext-demo` the template line is `<p th:utext="${review.text}">` instead of
+`th:text`. Same review, same page, captured with headless Chrome (`google-chrome --headless=new --screenshot`):
+
+| `th:text` (Lab05) | `th:utext` (`xss-utext-demo`) |
+|---|---|
+| ![th:text renders the payload as literal text](docs/img/xss-th-text.png) | ![th:utext turns the payload into a real img element](docs/img/xss-th-utext.png) |
+
+With `th:utext` the page source contains a real element and the browser shows a broken image:
 
 ```html
-<!-- DANGEROUS: th:utext emits raw HTML (not merged) -->
-<article>
-    <h2>alice (1/5)</h2>
-    <p><img src=x onerror="document.title='pwned'"></p>
-</article>
+<p><img src=x onerror="document.title='pwned'"></p>
 ```
 
-Without output encoding, the browser parses `<img>` as an HTML element, fails to load `src=x`, and attempts to execute the inline `onerror` handler (`document.title='pwned'`). Using `th:text` neutralises XSS at the template layer, while our `Content-Security-Policy: default-src 'self'; frame-ancestors 'none'; object-src 'none'` acts as defence in depth by blocking inline event handlers even if a template mistake occurred.
+The handler still does not run: the response carries
+`Content-Security-Policy: default-src 'self'; frame-ancestors 'none'; object-src 'none'`, and Chrome logs
+
+```text
+... violates the following Content Security Policy directive 'default-src 'self''. Either the 'unsafe-inline'
+keyword, a hash ('sha256-...'), or a nonce ('nonce-...') is required to enable inline execution. ...
+The action has been blocked.
+```
+
+so `document.title` stays `Reviews for Wireless mouse`. Loading the same saved HTML from a `file://` URL, where
+there is no CSP header, the title becomes `pwned`: the payload is live, and only the header stopped it.
+`th:text` fixes the cause (output encoding); the CSP is the second line of defence for a template mistake like this one.
 
 ### 5. Secrets audit & fail-fast start-up
 
