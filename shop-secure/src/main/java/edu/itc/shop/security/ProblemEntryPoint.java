@@ -22,7 +22,7 @@ public class ProblemEntryPoint implements AuthenticationEntryPoint {
     @Override
     public void commence(HttpServletRequest request, HttpServletResponse response,
                          AuthenticationException ex) throws IOException {
-        response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Basic realm=\"Realm\"");
+        response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer"); // Task 4: Bearer tokens, not Basic
         writer.write(request, response, HttpStatus.UNAUTHORIZED, "Authentication required");
     }
 }

@@ -1,4 +1,5 @@
 package edu.itc.shop.web.dto;
 
-public record TokenResponse() {
+/** The login answer: the JWT, how to send it, and how many seconds it stays valid. */
+public record TokenResponse(String token, String tokenType, long expiresIn) {
 }
