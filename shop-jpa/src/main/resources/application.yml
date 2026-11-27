@@ -10,6 +10,12 @@ spring:
     properties:
       hibernate:
         generate_statistics: true
+        # Task 5: JDBC batching
+        jdbc.batch_size: 50
+        order_inserts: true
+        order_updates: true
+        # Task 5: default_batch_fetch_size: 32 is NOT set globally, because it would also batch the
+        # naive N+1 demo. ProductNameReportTest switches it on to show how it caps the regression.
   data:
     web:
       pageable:
@@ -22,3 +28,5 @@ logging:
   level:
     org.hibernate.SQL: DEBUG
     org.hibernate.orm.jdbc.bind: TRACE
+    # Task 5: shows "Executing JDBC batch" (Hibernate 7 logger name; Hibernate 6 used org.hibernate.engine.jdbc.batch)
+    org.hibernate.orm.jdbc.batch: TRACE
