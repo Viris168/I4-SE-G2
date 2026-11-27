@@ -1,6 +1,9 @@
 package edu.itc.shop.web;
 
+import edu.itc.shop.config.BearerProblemEntryPoint;
+import edu.itc.shop.config.JwtConfig;
 import edu.itc.shop.config.SecurityConfig;
+import edu.itc.shop.config.SecurityProps;
 import edu.itc.shop.domain.Order;
 import edu.itc.shop.security.ProblemAccessDeniedHandler;
 import edu.itc.shop.security.ProblemEntryPoint;
@@ -8,11 +11,13 @@ import edu.itc.shop.security.ProblemResponseWriter;
 import edu.itc.shop.service.OrderService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -27,7 +32,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /** Proves the HTTP side: 401 for anonymous, 403 for a customer on /ship, 204 for an admin. */
 @WebMvcTest(OrderController.class)
-@Import({SecurityConfig.class, ProblemEntryPoint.class, ProblemAccessDeniedHandler.class, ProblemResponseWriter.class})
+@Import({SecurityConfig.class, JwtConfig.class, BearerProblemEntryPoint.class,
+         ProblemEntryPoint.class, ProblemAccessDeniedHandler.class, ProblemResponseWriter.class})
+@EnableConfigurationProperties(SecurityProps.class)
+@TestPropertySource(properties = "JWT_SECRET=test-only-secret-0123456789-0123456789-abcdefghij")
 class OrderControllerSecurityTest {
 
     @Autowired MockMvc mvc;

@@ -1,4 +1,6 @@
 package edu.itc.shop.web.dto;
 
-public record LoginRequest() {
+import jakarta.validation.constraints.NotBlank;
+
+public record LoginRequest(@NotBlank String username, @NotBlank String password) {
 }

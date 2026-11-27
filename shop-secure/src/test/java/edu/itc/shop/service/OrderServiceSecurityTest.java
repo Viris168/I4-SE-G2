@@ -9,6 +9,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.TestPropertySource;
 
 import java.util.List;
 
@@ -20,6 +21,7 @@ import static org.mockito.Mockito.when;
 
 /** Proves the @PreAuthorize rules on OrderService, independent of HTTP. */
 @SpringBootTest
+@TestPropertySource(properties = "JWT_SECRET=test-only-secret-0123456789-0123456789-abcdefghij")
 class OrderServiceSecurityTest {
 
     @Autowired OrderService service;

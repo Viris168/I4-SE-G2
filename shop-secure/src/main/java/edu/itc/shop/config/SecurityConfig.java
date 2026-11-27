@@ -11,6 +11,7 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 
@@ -20,18 +21,24 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain api(HttpSecurity http, ProblemEntryPoint entryPoint,
-                            ProblemAccessDeniedHandler accessDeniedHandler) throws Exception {
+                            ProblemAccessDeniedHandler accessDeniedHandler,
+                            JwtAuthenticationConverter jwtConverter,
+                            BearerProblemEntryPoint bearerEntryPoint) throws Exception {
         http.authorizeHttpRequests(auth -> auth
+                .requestMatchers("/api/auth/**", "/api/register").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
                 .requestMatchers(HttpMethod.DELETE, "/api/products/**").hasRole("ADMIN")
                 // Task 3, defence in depth: OrderService.ship is also @PreAuthorize("hasRole('ADMIN')")
                 .requestMatchers(HttpMethod.POST, "/api/orders/*/ship").hasRole("ADMIN")
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().denyAll())
-            .httpBasic(basic -> basic.authenticationEntryPoint(entryPoint))
+            // Task 4: HTTP Basic is gone; every request carries a Bearer JWT checked by the JwtDecoder
+            .oauth2ResourceServer(o -> o
+                .jwt(j -> j.jwtAuthenticationConverter(jwtConverter))
+                .authenticationEntryPoint(bearerEntryPoint))
             .formLogin(form -> form.disable())
-            // CSRF disabled: this chain accepts no cookie-based credentials (Basic / Bearer only),
-            // so a cross-site request cannot ride on a credential the browser attaches automatically.
+            // CSRF disabled: credentials are Bearer tokens only, never cookies, so a browser can't
+            // attach them to a cross-site request on its own.
             .csrf(csrf -> csrf.disable())
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .exceptionHandling(e -> e
