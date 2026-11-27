@@ -5,12 +5,14 @@ import java.nio.charset.StandardCharsets;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -60,11 +62,14 @@ public class JwtConfig {
         return conv;
     }
 
-    /** Used only by the login endpoint: looks the user up (Task 2) and compares the bcrypt hash. */
+    /**
+     * Used only by the login endpoint: looks the user up (Task 2) and compares the password hash.
+     * Uses PasswordConfig's encoder (Task 2); until it exists, Spring's delegating encoder.
+     */
     @Bean
-    AuthenticationManager authenticationManager(UserDetailsService uds, PasswordEncoder encoder) {
+    AuthenticationManager authenticationManager(UserDetailsService uds, ObjectProvider<PasswordEncoder> encoder) {
         var provider = new DaoAuthenticationProvider(uds);
-        provider.setPasswordEncoder(encoder);
+        provider.setPasswordEncoder(encoder.getIfAvailable(PasswordEncoderFactories::createDelegatingPasswordEncoder));
         return new ProviderManager(provider);
     }
 }

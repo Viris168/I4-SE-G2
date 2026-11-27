@@ -27,9 +27,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
@@ -41,9 +40,7 @@ import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
-import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -51,12 +48,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-import edu.itc.shop.config.BearerProblemEntryPoint;
 
 /**
  * Task 4 end to end on a real server: login, use the token, reject expired, malformed and wrong
- * credentials. Until Tasks 1-3 are merged, the user, the order endpoint and the filter chain are
- * test-only stand-ins (nested here, so the application never scans them).
+ * credentials, through Task 1's real filter chain. Until Tasks 2-3 are merged, the user and the
+ * order endpoint are test-only stand-ins (nested here, so the application never scans them).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestPropertySource(properties = "JWT_SECRET=test-only-secret-0123456789-0123456789-abcdefghij")
@@ -186,40 +182,20 @@ class AuthFlowIT {
         assertTrue(response.body().contains("\"instance\":\"" + instance + "\""), response.body());
     }
 
-    /** Test-only stand-ins for Tasks 1-3. Remove when their real classes are merged. */
+    /**
+     * Test-only stand-ins for Tasks 2-3; the filter chain is Task 1's real SecurityConfig.
+     * Remove when the JPA users (Task 2) and the order API (Task 3) are merged.
+     */
     @TestConfiguration
     static class StandIns {
 
-        /** Task 2 stand-in: one customer with a bcrypt hash, as the JPA UserDetailsService will provide. */
+        /** Task 2 stand-in: one customer with a bcrypt hash. @Primary over Task 1's temporary users. */
         @Bean
-        PasswordEncoder passwordEncoder() {
-            return PasswordEncoderFactories.createDelegatingPasswordEncoder();
-        }
-
-        @Bean
-        UserDetailsService users(PasswordEncoder encoder) {
+        @Primary
+        UserDetailsService testUsers() {
+            PasswordEncoder encoder = PasswordEncoderFactories.createDelegatingPasswordEncoder();
             return new InMemoryUserDetailsManager(User.withUsername("alice")
                     .password(encoder.encode("Alice-pass-123")).roles("CUSTOMER").build());
-        }
-
-        /** Task 1's chain after the Task 4 change: no HTTP Basic, Bearer JWT, stateless. */
-        @Bean
-        SecurityFilterChain api(HttpSecurity http, JwtAuthenticationConverter conv,
-                                BearerProblemEntryPoint entryPoint) throws Exception {
-            http
-                    .authorizeHttpRequests(a -> a
-                            .requestMatchers("/api/auth/**", "/api/register").permitAll()
-                            .anyRequest().authenticated())
-                    .oauth2ResourceServer(o -> o
-                            .jwt(j -> j.jwtAuthenticationConverter(conv))
-                            .authenticationEntryPoint(entryPoint))
-                    .exceptionHandling(e -> e.authenticationEntryPoint(entryPoint))
-                    .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                    // Bearer tokens only, never cookies: a browser can't attach them on its own, so CSRF can't happen
-                    .csrf(c -> c.disable())
-                    .httpBasic(b -> b.disable())
-                    .formLogin(f -> f.disable());
-            return http.build();
         }
 
         @Bean
