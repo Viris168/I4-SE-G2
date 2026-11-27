@@ -1,3 +1,17 @@
 spring:
   application:
     name: shop-secure
+  datasource:
+    url: jdbc:h2:mem:shop
+  jpa:
+    hibernate:
+      ddl-auto: update
+  h2:
+    console:
+      enabled: false
+
+shop:
+  security:
+    # Never put the real value here: export JWT_SECRET=$(openssl rand -base64 48)
+    jwt-secret: ${JWT_SECRET}
+    access-token-ttl: 15m

@@ -31,3 +31,7 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### secrets (Lab 5: never commit) ###
+.env
+*-local.yml
